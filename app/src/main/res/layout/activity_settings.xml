@@ -1,0 +1,25 @@
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:orientation="vertical" android:padding="20dp"
+    android:gravity="center_horizontal"
+    android:layout_width="match_parent" android:layout_height="match_parent">
+
+    <Switch
+        android:id="@+id/darkModeSwitch"
+        android:layout_width="137dp"
+        android:layout_height="69dp"
+        android:text="Dark Mode" />
+
+    <Button
+        android:id="@+id/pickImageBtn"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:text="Pick Background Image" />
+
+    <Button
+        android:id="@+id/applyBtn"
+        android:text="Submit"
+        android:layout_marginTop="24dp"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"/>
+</LinearLayout>
