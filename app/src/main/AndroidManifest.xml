@@ -15,6 +15,9 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.Minesweeper">
         <activity
+            android:name=".login"
+            android:exported="false" />
+        <activity
             android:name=".register"
             android:exported="false" />
         <activity android:name=".SettingsActivity" />
