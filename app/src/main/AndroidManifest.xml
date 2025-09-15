@@ -1,34 +1,38 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest package="com.example.minesweeper" xmlns:android="http://schemas.android.com/apk/res/android">
-
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.example.minesweeper">
     <!-- הרשאות לרשת ולשירות קדמי -->
-    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"/>
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <!-- (ב-Android 13+ תצטרך לאשר בזמן ריצה; בקוד דאגתי להציג הודעה אם חסר) -->
 
     <application
         android:allowBackup="true"
-        android:label="Minesweeper"
         android:icon="@mipmap/ic_launcher"
+        android:label="Minesweeper"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.Minesweeper">
-
+        <activity
+            android:name=".register"
+            android:exported="false" />
         <activity android:name=".SettingsActivity" />
         <activity android:name=".GameActivity" />
-        <activity android:name=".MainActivity"
+        <activity
+            android:name=".MainActivity"
             android:exported="true">
             <intent-filter>
-                <action android:name="android.intent.action.MAIN"/>
-                <category android:name="android.intent.category.LAUNCHER"/>
+                <action android:name="android.intent.action.MAIN" />
+
+                <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
 
         <service
             android:name=".MusicService"
             android:exported="false"
-            android:foregroundServiceType="mediaPlayback"/>
+            android:foregroundServiceType="mediaPlayback" />
     </application>
+
 </manifest>
