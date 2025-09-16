@@ -122,11 +122,25 @@ public class MainActivity extends AppCompatActivity {
     }
     @Override
     public boolean onOptionsItemSelected(MenuItem item) {
-        if (item.getItemId() == R.id.menu_settings) {
+        int id = item.getItemId();
+
+        if (id == R.id.menu_settings) {
             Intent intent = new Intent(this, SettingsActivity.class);
             settingsLauncher.launch(intent); // ActivityResultLauncher
             return true;
+
+        } else if (id == R.id.menu_login) {
+            startActivity(new Intent(this, LoginActivity.class));
+            return true;
+
+        } else if (id == R.id.menu_register) {
+            startActivity(new Intent(this, RegisterActivity.class));
+            return true;
         }
+
         return super.onOptionsItemSelected(item);
     }
+
+
+
 }
