@@ -43,6 +43,8 @@ dependencies {
     implementation 'androidx.cardview:cardview:1.0.0'
     implementation libs.firebase.auth
     implementation libs.activity
+    implementation libs.firebase.storage
+    implementation libs.firebase.firestore
 
     testImplementation 'junit:junit:4.13.2'
     androidTestImplementation 'androidx.test.ext:junit:1.1.6'
