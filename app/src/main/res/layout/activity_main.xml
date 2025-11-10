@@ -24,13 +24,6 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"/>
 
-    <Switch
-        android:id="@+id/musicSwitch"
-        android:layout_width="175dp"
-        android:layout_height="81dp"
-        android:layout_marginTop="16dp"
-        android:text="Background Music" />
-
     <Button
         android:id="@+id/startBtn"
         android:text="Start Game"

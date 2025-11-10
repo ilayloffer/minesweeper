@@ -27,10 +27,9 @@ public class MainActivity extends AppCompatActivity {
     private TextView difficultyLabel;
     private Switch musicSwitch;
     private Button startBtn;
-
     private SharedPreferences prefs;
 
-    // ActivityResultLauncher (חדש) למסך ההגדרות
+    // ActivityResultLauncher for Settings screen
     private final ActivityResultLauncher<Intent> settingsLauncher =
             registerForActivityResult(new ActivityResultContracts.StartActivityForResult(), result -> {
                 if (result.getResultCode() == RESULT_OK && result.getData() != null) {
@@ -47,7 +46,7 @@ public class MainActivity extends AppCompatActivity {
                 }
             });
 
-    // BroadcastReceiver (רשת) - נרשם דינמית
+    // BroadcastReceiver (network)
     private final BroadcastReceiver networkReceiver = new NetworkChangeReceiver();
 
     @Override
@@ -58,7 +57,7 @@ public class MainActivity extends AppCompatActivity {
 
         prefs = getSharedPreferences("MinePrefs", MODE_PRIVATE);
 
-        difficultySeek = findViewById(R.id.difficultySeek);        // findViewById
+        difficultySeek = findViewById(R.id.difficultySeek);
         difficultyLabel = findViewById(R.id.difficultyLabel);
         musicSwitch = findViewById(R.id.musicSwitch);
         startBtn = findViewById(R.id.startBtn);
@@ -67,44 +66,30 @@ public class MainActivity extends AppCompatActivity {
         difficultySeek.setProgress(saved);
         updateDifficultyLabel(saved);
 
-        difficultySeek.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() { // מחלקה אנונימית
+        difficultySeek.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
                 updateDifficultyLabel(progress);
             }
             @Override public void onStartTrackingTouch(SeekBar seekBar) {}
             @Override public void onStopTrackingTouch(SeekBar seekBar) {
-                prefs.edit().putInt("difficulty", seekBar.getProgress()).apply(); // SharedPreferences
+                prefs.edit().putInt("difficulty", seekBar.getProgress()).apply();
             }
         });
 
-        musicSwitch.setChecked(prefs.getBoolean("music_on", false));
-        musicSwitch.setOnCheckedChangeListener((btn, isChecked) -> { // setOnClickListener/Listener
-            prefs.edit().putBoolean("music_on", isChecked).apply();
-            Intent svc = new Intent(this, MusicService.class);
-            if (isChecked) {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    startForegroundService(svc);
-                } else {
-                    startService(svc);
-                }
-            } else {
-                stopService(svc);
-            }
-        });
+
 
         startBtn.setOnClickListener(v -> {
-            int size = difficultySeek.getProgress() + 1; // 1..10
-            Intent i = new Intent(MainActivity.this, GameActivity.class); // startActivity
+            int size = difficultySeek.getProgress() + 1;
+            Intent i = new Intent(MainActivity.this, GameActivity.class);
             i.putExtra("size", size);
             startActivity(i);
         });
 
-        // רישום BroadcastReceiver דינמי
         registerReceiver(networkReceiver, new IntentFilter(ConnectivityManager.CONNECTIVITY_ACTION));
     }
 
     private void updateDifficultyLabel(int progress) {
-        int size = progress + 1; // 1..10
+        int size = progress + 1;
         difficultyLabel.setText("Board Size: " + size + " x " + size);
     }
 
@@ -114,19 +99,39 @@ public class MainActivity extends AppCompatActivity {
         try { unregisterReceiver(networkReceiver); } catch (Exception ignored) {}
     }
 
-    // MENU
+    // -----------------------------
+    // 🔊 MENU MUSIC CONTROL SECTION
+    // -----------------------------
     @Override
     public boolean onCreateOptionsMenu(Menu menu) {
         getMenuInflater().inflate(R.menu.main_menu, menu);
+
+        // Restore last state
+        boolean wasMusicOn = prefs.getBoolean("music_on", false);
+        MenuItem musicItem = menu.findItem(R.id.action_music);
+        musicItem.setChecked(wasMusicOn);
+
+        if (wasMusicOn) {
+            handleMusicService(true);
+        }
+
         return true;
     }
+
     @Override
     public boolean onOptionsItemSelected(MenuItem item) {
         int id = item.getItemId();
 
-        if (id == R.id.menu_settings) {
+        if (id == R.id.action_music) {
+            boolean newState = !item.isChecked();
+            item.setChecked(newState);
+            prefs.edit().putBoolean("music_on", newState).apply();
+            handleMusicService(newState);
+            return true;
+
+        } else if (id == R.id.menu_settings) {
             Intent intent = new Intent(this, SettingsActivity.class);
-            settingsLauncher.launch(intent); // ActivityResultLauncher
+            settingsLauncher.launch(intent);
             return true;
 
         } else if (id == R.id.menu_login) {
@@ -141,6 +146,17 @@ public class MainActivity extends AppCompatActivity {
         return super.onOptionsItemSelected(item);
     }
 
-
-
+    // 🔧 Helper for starting/stopping MusicService
+    private void handleMusicService(boolean start) {
+        Intent svc = new Intent(this, MusicService.class);
+        if (start) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(svc);
+            } else {
+                startService(svc);
+            }
+        } else {
+            stopService(svc);
+        }
+    }
 }
