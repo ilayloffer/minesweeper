@@ -27,6 +27,7 @@ public class MainActivity extends AppCompatActivity {
     private TextView difficultyLabel;
     private Switch musicSwitch;
     private Button startBtn;
+    private Button startOnlineBtn;
     private SharedPreferences prefs;
 
     // ActivityResultLauncher for Settings screen
@@ -59,13 +60,15 @@ public class MainActivity extends AppCompatActivity {
 
         difficultySeek = findViewById(R.id.difficultySeek);
         difficultyLabel = findViewById(R.id.difficultyLabel);
-        musicSwitch = findViewById(R.id.musicSwitch);
         startBtn = findViewById(R.id.startBtn);
+        startOnlineBtn = findViewById(R.id.StartOnl);
 
+        // Load saved difficulty
         int saved = prefs.getInt("difficulty", 5);
         difficultySeek.setProgress(saved);
         updateDifficultyLabel(saved);
 
+        // SeekBar listener
         difficultySeek.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
                 updateDifficultyLabel(progress);
@@ -76,8 +79,7 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
-
-
+        // Start local game
         startBtn.setOnClickListener(v -> {
             int size = difficultySeek.getProgress() + 1;
             Intent i = new Intent(MainActivity.this, GameActivity.class);
@@ -85,6 +87,13 @@ public class MainActivity extends AppCompatActivity {
             startActivity(i);
         });
 
+        // Start online game
+        startOnlineBtn.setOnClickListener(v -> {
+            Intent intent = new Intent(MainActivity.this, OnlineGameActivity.class);
+            startActivity(intent);
+        });
+
+        // Register network receiver
         registerReceiver(networkReceiver, new IntentFilter(ConnectivityManager.CONNECTIVITY_ACTION));
     }
 
@@ -141,10 +150,16 @@ public class MainActivity extends AppCompatActivity {
         } else if (id == R.id.menu_register) {
             startActivity(new Intent(this, RegisterActivity.class));
             return true;
+
+        } else if (id == R.id.leaderboard) {  // ← Add this
+            Intent intent = new Intent(this, LeaderboardActivity.class);
+            startActivity(intent);
+            return true;
         }
 
         return super.onOptionsItemSelected(item);
     }
+
 
     // 🔧 Helper for starting/stopping MusicService
     private void handleMusicService(boolean start) {

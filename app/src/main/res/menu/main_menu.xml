@@ -11,14 +11,20 @@
         android:id="@+id/menu_register"
         android:title="Register" />
 
-        <item
-            android:id="@+id/action_music"
-            android:title="Background Music"
-            android:checkable="true"
-            android:checked="false"
-            app:showAsAction="always"
-            android:icon="@drawable/ic_music_note"
-            />
+    <item
+        android:id="@+id/action_music"
+        android:title="Background Music"
+        android:checkable="true"
+        android:checked="false"
+        app:showAsAction="always"
+        android:icon="@drawable/ic_music_note" />
 
+    <item
+        android:id="@+id/leaderboard"
+        android:title="leaderboard Page"
+        android:checkable="true"
+        android:checked="false"
+        app:showAsAction="always"
+        android:icon="@drawable/leaderboard" />
 
 </menu>
