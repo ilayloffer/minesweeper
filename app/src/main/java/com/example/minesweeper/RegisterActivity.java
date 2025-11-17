@@ -5,6 +5,7 @@ import android.net.Uri;
 import android.os.Bundle;
 import android.view.View;
 import android.widget.Button;
+import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.ProgressBar;
 import android.widget.Toast;
@@ -51,12 +52,17 @@ public class RegisterActivity extends AppCompatActivity {
         profileImage = findViewById(R.id.profileImage);
         progressBar = findViewById(R.id.progressBar);
 
+        // BACK BUTTON
+        ImageButton backBtn = findViewById(R.id.backBtn);
+        backBtn.setOnClickListener(v -> finish());
+
         // Select profile image from gallery
         btnSelectImage.setOnClickListener(v -> openFileChooser());
 
         // Register user
         btnRegister.setOnClickListener(v -> registerUser());
     }
+
 
     private void openFileChooser() {
         Intent intent = new Intent();

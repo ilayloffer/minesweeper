@@ -1,6 +1,8 @@
 package com.example.minesweeper;
 
+import android.content.Intent;
 import android.os.Bundle;
+import android.widget.ImageButton;
 import android.widget.Toast;
 
 import androidx.annotation.Nullable;
@@ -32,6 +34,15 @@ public class LeaderboardActivity extends AppCompatActivity {
 
         firestore = FirebaseFirestore.getInstance();
         loadLeaderboard();
+
+        // Add this inside onCreate()
+        ImageButton backBtn = findViewById(R.id.backBtn);
+        backBtn.setOnClickListener(v -> {
+            // Return to MainActivity
+            Intent i = new Intent(this, MainActivity.class);
+            startActivity(i);
+            finish();
+        });
     }
 
     private void loadLeaderboard() {

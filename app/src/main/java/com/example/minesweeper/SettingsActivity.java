@@ -7,6 +7,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.util.Log;
 import android.widget.Button;
+import android.widget.ImageButton;
 import android.widget.Switch;
 import android.widget.Toast;
 
@@ -27,6 +28,9 @@ public class SettingsActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_settings);
+
+        ImageButton backBtn = findViewById(R.id.backBtn);
+        backBtn.setOnClickListener(v -> finish());
 
         darkModeSwitch = findViewById(R.id.darkModeSwitch);
         pickImageBtn = findViewById(R.id.pickImageBtn);
