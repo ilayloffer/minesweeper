@@ -45,6 +45,8 @@ dependencies {
     implementation libs.activity
     implementation libs.firebase.storage
     implementation libs.firebase.firestore
+    implementation libs.firebase.database
+    implementation libs.firebase.analytics
 
     testImplementation 'junit:junit:4.13.2'
     androidTestImplementation 'androidx.test.ext:junit:1.1.6'
