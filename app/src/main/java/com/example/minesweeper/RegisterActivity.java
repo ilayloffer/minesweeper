@@ -2,6 +2,7 @@ package com.example.minesweeper;
 
 import android.content.Intent;
 import android.os.Bundle;
+import android.view.View;
 import android.widget.Button;
 import android.widget.ImageButton;
 import android.widget.ProgressBar;
@@ -24,7 +25,6 @@ public class RegisterActivity extends AppCompatActivity {
     private FirebaseAuth auth;
     private TextInputEditText etEmail, etPassword, etUsername;
     private ProgressBar progressBar;
-
     private FirebaseFirestore db;
 
     @Override
@@ -38,10 +38,11 @@ public class RegisterActivity extends AppCompatActivity {
         etEmail = findViewById(R.id.etEmail);
         etPassword = findViewById(R.id.etPassword);
         etUsername = findViewById(R.id.etUsername);
-        Button btnRegister = findViewById(R.id.btnRegister);
         progressBar = findViewById(R.id.progressBar);
 
+        Button btnRegister = findViewById(R.id.btnRegister);
         ImageButton backBtn = findViewById(R.id.backBtn);
+
         backBtn.setOnClickListener(v -> finish());
 
         btnRegister.setOnClickListener(v -> checkUsernameAndRegister());
@@ -54,24 +55,21 @@ public class RegisterActivity extends AppCompatActivity {
             return;
         }
 
-        progressBar.setVisibility(android.view.View.VISIBLE);
+        progressBar.setVisibility(View.VISIBLE);
 
-        // Check if username exists
         db.collection("users")
                 .whereEqualTo("username", username)
                 .get()
                 .addOnCompleteListener(task -> {
+                    progressBar.setVisibility(View.GONE);
                     if (task.isSuccessful()) {
                         QuerySnapshot snapshot = task.getResult();
                         if (snapshot != null && !snapshot.isEmpty()) {
-                            progressBar.setVisibility(android.view.View.GONE);
                             Toast.makeText(this, "שם המשתמש כבר קיים", Toast.LENGTH_SHORT).show();
                         } else {
-                            // Username is available, continue registration
                             registerUser();
                         }
                     } else {
-                        progressBar.setVisibility(android.view.View.GONE);
                         Toast.makeText(this, "שגיאה בבדיקת שם משתמש", Toast.LENGTH_SHORT).show();
                     }
                 });
@@ -92,9 +90,11 @@ public class RegisterActivity extends AppCompatActivity {
             return;
         }
 
+        progressBar.setVisibility(View.VISIBLE);
+
         auth.createUserWithEmailAndPassword(email, pass)
                 .addOnCompleteListener(task -> {
-                    progressBar.setVisibility(android.view.View.GONE);
+                    progressBar.setVisibility(View.GONE);
                     if (task.isSuccessful()) {
                         FirebaseUser user = auth.getCurrentUser();
                         if (user != null) {
@@ -111,14 +111,22 @@ public class RegisterActivity extends AppCompatActivity {
         userMap.put("email", email);
         userMap.put("username", username);
 
+        progressBar.setVisibility(View.VISIBLE);
+
         db.collection("users").document(userId).set(userMap)
                 .addOnSuccessListener(aVoid -> {
+                    progressBar.setVisibility(View.GONE);
                     Toast.makeText(this, "נרשמת בהצלחה!", Toast.LENGTH_LONG).show();
-                    Intent intent = new Intent(RegisterActivity.this, Activity_main.class);
+
+                    Intent intent = new Intent(RegisterActivity.this, MainActivity.class);
+                    intent.putExtra("USERNAME", username); // pass username
                     intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_NEW_TASK);
                     startActivity(intent);
                     finish();
                 })
-                .addOnFailureListener(e -> Toast.makeText(this, "שגיאה בשמירה: " + e.getMessage(), Toast.LENGTH_SHORT).show());
+                .addOnFailureListener(e -> {
+                    progressBar.setVisibility(View.GONE);
+                    Toast.makeText(this, "שגיאה בשמירה: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+                });
     }
 }

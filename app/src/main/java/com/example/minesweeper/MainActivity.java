@@ -47,7 +47,7 @@ public class MainActivity extends AppCompatActivity {
                 }
             });
 
-    // BroadcastReceiver (network)
+    // BroadcastReceiver for network changes
     private final BroadcastReceiver networkReceiver = new NetworkChangeReceiver();
 
     @Override
@@ -95,6 +95,13 @@ public class MainActivity extends AppCompatActivity {
 
         // Register network receiver
         registerReceiver(networkReceiver, new IntentFilter(ConnectivityManager.CONNECTIVITY_ACTION));
+
+        // Display welcome message
+        TextView tvWelcome = findViewById(R.id.tvWelcome); // make sure you have this TextView
+        String username = getIntent().getStringExtra("USERNAME");
+        if (username != null && !username.isEmpty()) {
+            tvWelcome.setText("שלום, " + username + "!");
+        }
     }
 
     private void updateDifficultyLabel(int progress) {
@@ -115,7 +122,7 @@ public class MainActivity extends AppCompatActivity {
     public boolean onCreateOptionsMenu(Menu menu) {
         getMenuInflater().inflate(R.menu.main_menu, menu);
 
-        // Restore last state
+        // Restore last music state
         boolean wasMusicOn = prefs.getBoolean("music_on", false);
         MenuItem musicItem = menu.findItem(R.id.action_music);
         musicItem.setChecked(wasMusicOn);
@@ -151,15 +158,13 @@ public class MainActivity extends AppCompatActivity {
             startActivity(new Intent(this, RegisterActivity.class));
             return true;
 
-        } else if (id == R.id.leaderboard) {  // ← Add this
-            Intent intent = new Intent(this, LeaderboardActivity.class);
-            startActivity(intent);
+        } else if (id == R.id.leaderboard) {
+            startActivity(new Intent(this, LeaderboardActivity.class));
             return true;
         }
 
         return super.onOptionsItemSelected(item);
     }
-
 
     // 🔧 Helper for starting/stopping MusicService
     private void handleMusicService(boolean start) {
