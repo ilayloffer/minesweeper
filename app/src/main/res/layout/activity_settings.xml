@@ -8,15 +8,13 @@
 
     <ImageButton
         android:id="@+id/backBtn"
-        android:layout_width="69dp"
-        android:layout_height="79dp"
-        android:layout_margin="16dp"
-        android:background="@android:color/transparent"
-        android:contentDescription="Back"
-        android:src="@android:drawable/ic_media_previous"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent" />
-
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_gravity="left"
+        android:background="@drawable/ic_back"
+        android:padding="8dp"
+        android:contentDescription="@string/back_button"
+        app:tint="@android:color/black" />
     <Switch
         android:id="@+id/darkModeSwitch"
         android:layout_width="137dp"

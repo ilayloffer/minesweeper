@@ -1,7 +1,6 @@
 package com.example.minesweeper;
 
 import android.content.BroadcastReceiver;
-import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.SharedPreferences;
@@ -13,7 +12,6 @@ import android.view.Menu;
 import android.view.MenuItem;
 import android.widget.Button;
 import android.widget.SeekBar;
-import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -21,11 +19,13 @@ import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.appcompat.app.AppCompatActivity;
 
+import com.google.firebase.auth.FirebaseAuth;
+
 public class MainActivity extends AppCompatActivity {
 
     private SeekBar difficultySeek;
     private TextView difficultyLabel;
-    private Switch musicSwitch;
+    private TextView tvWelcome;
     private Button startBtn;
     private Button startOnlineBtn;
     private SharedPreferences prefs;
@@ -37,10 +37,12 @@ public class MainActivity extends AppCompatActivity {
                     String theme = result.getData().getStringExtra("theme");
                     String bgUri = result.getData().getStringExtra("bgUri");
                     Log.d("MainActivity", "Settings result -> theme=" + theme + ", bgUri=" + bgUri);
+
                     if (theme != null) {
                         prefs.edit().putString("theme", theme).apply();
                         Toast.makeText(this, "Theme: " + theme, Toast.LENGTH_SHORT).show();
                     }
+
                     if (bgUri != null) {
                         prefs.edit().putString("bgUri", bgUri).apply();
                     }
@@ -58,17 +60,19 @@ public class MainActivity extends AppCompatActivity {
 
         prefs = getSharedPreferences("MinePrefs", MODE_PRIVATE);
 
+        // View bindings
         difficultySeek = findViewById(R.id.difficultySeek);
         difficultyLabel = findViewById(R.id.difficultyLabel);
+        tvWelcome = findViewById(R.id.tvWelcome);
         startBtn = findViewById(R.id.startBtn);
         startOnlineBtn = findViewById(R.id.StartOnl);
 
         // Load saved difficulty
-        int saved = prefs.getInt("difficulty", 5);
-        difficultySeek.setProgress(saved);
-        updateDifficultyLabel(saved);
+        int savedDifficulty = prefs.getInt("difficulty", 5);
+        difficultySeek.setProgress(savedDifficulty);
+        updateDifficultyLabel(savedDifficulty);
 
-        // SeekBar listener
+        // Difficulty SeekBar listener
         difficultySeek.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
                 updateDifficultyLabel(progress);
@@ -82,26 +86,36 @@ public class MainActivity extends AppCompatActivity {
         // Start local game
         startBtn.setOnClickListener(v -> {
             int size = difficultySeek.getProgress() + 1;
-            Intent i = new Intent(MainActivity.this, GameActivity.class);
-            i.putExtra("size", size);
-            startActivity(i);
+            Intent intent = new Intent(MainActivity.this, GameActivity.class);
+            intent.putExtra("size", size);
+            startActivity(intent);
         });
 
         // Start online game
-        startOnlineBtn.setOnClickListener(v -> {
-            Intent intent = new Intent(MainActivity.this, OnlineGameActivity.class);
-            startActivity(intent);
-        });
+        startOnlineBtn.setOnClickListener(v -> startActivity(new Intent(MainActivity.this, OnlineGameActivity.class)));
 
         // Register network receiver
         registerReceiver(networkReceiver, new IntentFilter(ConnectivityManager.CONNECTIVITY_ACTION));
 
         // Display welcome message
-        TextView tvWelcome = findViewById(R.id.tvWelcome); // make sure you have this TextView
+        displayWelcomeMessage();
+    }
+
+    private void displayWelcomeMessage() {
         String username = getIntent().getStringExtra("USERNAME");
-        if (username != null && !username.isEmpty()) {
-            tvWelcome.setText("שלום, " + username + "!");
+
+        if (username == null || username.isEmpty()) {
+            username = prefs.getString("username", null);
+        } else {
+            // Save newly received username for future use
+            prefs.edit().putString("username", username).apply();
         }
+
+        if (username == null || username.isEmpty()) {
+            username = "Player";
+        }
+
+        tvWelcome.setText("Welcome, " + username + "!");
     }
 
     private void updateDifficultyLabel(int progress) {
@@ -110,26 +124,38 @@ public class MainActivity extends AppCompatActivity {
     }
 
     @Override
+    protected void onResume() {
+        super.onResume();
+        // Refresh welcome message in case username changed
+        displayWelcomeMessage();
+        invalidateOptionsMenu(); // Refresh menu to show/hide login/logout
+    }
+
+    @Override
     protected void onDestroy() {
         super.onDestroy();
-        try { unregisterReceiver(networkReceiver); } catch (Exception ignored) {}
+        try {
+            unregisterReceiver(networkReceiver);
+        } catch (Exception ignored) {}
     }
 
     // -----------------------------
-    // 🔊 MENU MUSIC CONTROL SECTION
+    // 🔊 MENU MUSIC & LOGIN/LOGOUT CONTROL
     // -----------------------------
     @Override
     public boolean onCreateOptionsMenu(Menu menu) {
         getMenuInflater().inflate(R.menu.main_menu, menu);
 
-        // Restore last music state
         boolean wasMusicOn = prefs.getBoolean("music_on", false);
         MenuItem musicItem = menu.findItem(R.id.action_music);
         musicItem.setChecked(wasMusicOn);
+        if (wasMusicOn) handleMusicService(true);
 
-        if (wasMusicOn) {
-            handleMusicService(true);
-        }
+        // Show/hide menu items based on login state
+        boolean isLoggedIn = FirebaseAuth.getInstance().getCurrentUser() != null;
+        menu.findItem(R.id.menu_login).setVisible(!isLoggedIn);
+        menu.findItem(R.id.menu_register).setVisible(!isLoggedIn);
+        menu.findItem(R.id.menu_logout).setVisible(isLoggedIn);
 
         return true;
     }
@@ -146,8 +172,7 @@ public class MainActivity extends AppCompatActivity {
             return true;
 
         } else if (id == R.id.menu_settings) {
-            Intent intent = new Intent(this, SettingsActivity.class);
-            settingsLauncher.launch(intent);
+            settingsLauncher.launch(new Intent(this, SettingsActivity.class));
             return true;
 
         } else if (id == R.id.menu_login) {
@@ -161,6 +186,19 @@ public class MainActivity extends AppCompatActivity {
         } else if (id == R.id.leaderboard) {
             startActivity(new Intent(this, LeaderboardActivity.class));
             return true;
+
+        } else if (id == R.id.menu_logout) {
+            // 🔒 Logout
+            FirebaseAuth.getInstance().signOut();
+            prefs.edit().remove("username").apply();
+
+            Intent intent = new Intent(this, LoginActivity.class);
+            intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP |
+                    Intent.FLAG_ACTIVITY_NEW_TASK |
+                    Intent.FLAG_ACTIVITY_CLEAR_TASK);
+            startActivity(intent);
+            finish();
+            return true;
         }
 
         return super.onOptionsItemSelected(item);
@@ -170,11 +208,8 @@ public class MainActivity extends AppCompatActivity {
     private void handleMusicService(boolean start) {
         Intent svc = new Intent(this, MusicService.class);
         if (start) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                startForegroundService(svc);
-            } else {
-                startService(svc);
-            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(svc);
+            else startService(svc);
         } else {
             stopService(svc);
         }

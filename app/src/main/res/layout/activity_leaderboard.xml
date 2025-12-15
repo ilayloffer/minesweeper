@@ -9,14 +9,14 @@
 
     <ImageButton
         android:id="@+id/backBtn"
-        android:layout_width="40dp"
-        android:layout_height="40dp"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_gravity="left"
+        android:background="@drawable/ic_back"
         android:padding="8dp"
-        android:background="@android:color/transparent"
-        android:src="@android:drawable/ic_media_previous"
-        app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        />
+        android:contentDescription="@string/back_button"
+        app:tint="@android:color/black"
+        tools:ignore="MissingConstraints" />
 
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/recyclerLeaderboard"

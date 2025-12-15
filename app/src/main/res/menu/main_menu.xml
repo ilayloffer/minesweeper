@@ -26,5 +26,10 @@
         android:checked="false"
         app:showAsAction="always"
         android:icon="@drawable/leaderboard" />
+    <item
+        android:id="@+id/menu_logout"
+        android:title="Logout"
+        app:showAsAction="always"/>
+
 
 </menu>
