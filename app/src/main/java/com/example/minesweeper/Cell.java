@@ -1,15 +1,26 @@
 package com.example.minesweeper;
 
 public class Cell {
-    public boolean hasMine;
-    public boolean revealed;
-    public int adjacentMines;
+    private boolean hasMine;
+    private int neighborMines;
+    private boolean isRevealed;
 
-    public Cell() {} // Needed for Firebase
+    // Empty constructor required for Firestore
+    public Cell() {}
 
-    public Cell(boolean hasMine, int adjacentMines) {
+    public Cell(boolean hasMine, int neighborMines) {
         this.hasMine = hasMine;
-        this.revealed = false;
-        this.adjacentMines = adjacentMines;
+        this.neighborMines = neighborMines;
+        this.isRevealed = false;
     }
+
+    // Getters and Setters are required for Firestore
+    public boolean isHasMine() { return hasMine; }
+    public void setHasMine(boolean hasMine) { this.hasMine = hasMine; }
+
+    public int getNeighborMines() { return neighborMines; }
+    public void setNeighborMines(int neighborMines) { this.neighborMines = neighborMines; }
+
+    public boolean isRevealed() { return isRevealed; }
+    public void setRevealed(boolean revealed) { isRevealed = revealed; }
 }

@@ -3,71 +3,99 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent">
 
-    <!-- ⭐ FIXED TIMER AT TOP ⭐ -->
     <LinearLayout
-        android:orientation="vertical"
+        android:orientation="horizontal"
         android:padding="12dp"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:gravity="center_horizontal">
+        android:gravity="center_vertical">
 
         <TextView
             android:id="@+id/timerText"
-            android:text="0"
+            android:text="00:00"
             android:textSize="28sp"
             android:textStyle="bold"
             android:padding="6dp"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"/>
+
+        <Button
+            android:id="@+id/resetBtn"
             android:layout_width="wrap_content"
-            android:layout_height="wrap_content" />
+            android:layout_height="wrap_content"
+            android:text="Reset"
+            android:minHeight="48dp"/>
 
     </LinearLayout>
 
-    <!-- Scrollable board BELOW timer -->
     <ScrollView
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:layout_marginTop="60dp">   <!-- push ScrollView down so timer stays visible -->
-
-        <LinearLayout
-            android:id="@+id/boardContainer"
-            android:padding="12dp"
-            android:orientation="vertical"
-            android:gravity="center_horizontal"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content" />
+        android:layout_marginTop="80dp"> <LinearLayout
+        android:id="@+id/boardContainer"
+        android:padding="12dp"
+        android:orientation="vertical"
+        android:gravity="center_horizontal"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content" />
 
     </ScrollView>
 
-    <!-- Game Over / Win overlay -->
     <FrameLayout
         android:id="@+id/overlay"
         android:visibility="gone"
-        android:background="#AA000000"
+        android:background="#D9000000"
+        android:clickable="true"
+        android:focusable="true"
         android:layout_width="match_parent"
         android:layout_height="match_parent">
 
         <LinearLayout
             android:orientation="vertical"
-            android:padding="24dp"
+            android:padding="32dp"
             android:gravity="center"
             android:background="@android:color/white"
             android:layout_gravity="center"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content">
+            android:layout_width="300dp"
+            android:layout_height="wrap_content"
+            android:elevation="10dp">
 
             <TextView
                 android:id="@+id/overlayTitle"
                 android:text="Game Over"
-                android:textSize="22sp"
+                android:textSize="28sp"
+                android:textStyle="bold"
+                android:layout_marginBottom="16dp"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content" />
 
-            <Button
-                android:id="@+id/resetBtn"
-                android:text="Play Again"
-                android:layout_marginTop="16dp"
+            <TextView
+                android:id="@+id/flagCountText"
                 android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Flags: 0"
+                android:visibility="gone"
+                android:textSize="18sp"
+                android:layout_marginBottom="20dp"/>
+
+            <Button
+                android:id="@+id/btnNewGame"
+                android:text="New Game"
+                android:backgroundTint="#4CAF50"
+                android:textColor="#FFFFFF"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="12dp" />
+
+            <Button
+                android:id="@+id/btnHome"
+                android:text="Back Home"
+                android:backgroundTint="#F44336"
+                android:textColor="#FFFFFF"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content" />
+
         </LinearLayout>
     </FrameLayout>
 
