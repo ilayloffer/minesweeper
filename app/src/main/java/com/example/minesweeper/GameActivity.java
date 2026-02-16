@@ -8,12 +8,14 @@ import android.net.Uri;
 import android.os.Bundle;
 import android.os.CountDownTimer;
 import android.util.Log;
+import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import androidx.appcompat.app.AppCompatActivity;
 
@@ -44,6 +46,10 @@ public class GameActivity extends AppCompatActivity {
     private boolean[][] revealed;
     private boolean isGameOver = false;
 
+    // Deltas for finding neighbors (Top, Bottom, Left, Right, Diagonals)
+    private final int[] dx = {-1, -1, -1, 0, 0, 1, 1, 1};
+    private final int[] dy = {-1, 0, 1, -1, 1, -1, 0, 1};
+
     @SuppressLint("MissingInflatedId")
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -62,8 +68,11 @@ public class GameActivity extends AppCompatActivity {
 
         timerText.setText("00:00");
 
-        // 2. Get Game Size
-        size = Math.max(3, getIntent().getIntExtra("size", 8));
+        // 2. Get Game Size & Apply Limits
+        // Math.max(3, ...) ensures min size is 3
+        // Math.min(12, ...) ensures max size is 12
+        int requestedSize = getIntent().getIntExtra("size", 8);
+        size = Math.min(12, Math.max(3, requestedSize));
 
         // 3. Optional: Background Image
         SharedPreferences prefs = getSharedPreferences("MinePrefs", MODE_PRIVATE);
@@ -86,14 +95,8 @@ public class GameActivity extends AppCompatActivity {
         buildUi();
 
         // 5. Button Listeners
-
-        // Top Reset Button -> Restart immediately
         resetBtn.setOnClickListener(v -> recreate());
-
-        // Overlay: New Game -> Restart immediately
         btnNewGame.setOnClickListener(v -> recreate());
-
-        // Overlay: Back Home -> Close Activity
         btnHome.setOnClickListener(v -> finish());
     }
 
@@ -119,9 +122,6 @@ public class GameActivity extends AppCompatActivity {
         }
 
         // Calculate Neighbors
-        int[] dx = {-1, -1, -1, 0, 0, 1, 1, 1};
-        int[] dy = {-1, 0, 1, -1, 1, -1, 0, 1};
-
         for (int i = 0; i < size; i++) {
             for (int j = 0; j < size; j++) {
                 if (mines[i][j]) continue;
@@ -151,10 +151,10 @@ public class GameActivity extends AppCompatActivity {
                 final int x = i, y = j;
                 Button cell = new Button(this);
                 cell.setText("");
-                cell.setTextSize(18f);
+                cell.setTextSize(14f); // Slightly smaller text for 12x12
                 cell.getBackground().setColorFilter(0xFFE0E0E0, PorterDuff.Mode.MULTIPLY);
 
-                // --- LONG CLICK: FLAG 🚩 ---
+                // --- LONG CLICK = FLAG ---
                 cell.setOnLongClickListener(v -> {
                     if (revealed[x][y] || isGameOver) return true;
 
@@ -170,16 +170,15 @@ public class GameActivity extends AppCompatActivity {
                 // --- NORMAL CLICK: REVEAL ---
                 cell.setOnClickListener(v -> {
                     if (isGameOver) return;
-
-                    // Safety: Do not click flagged cells
                     if (cell.getText().toString().equals("🚩")) return;
-
                     if (!timerStarted) startTimer();
 
                     reveal(x, y, cell);
                 });
 
-                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, 140, 1f);
+                // Set dimensions.
+                // Adjusted height to 100 (was 140) to make sure 12 rows fit on screen.
+                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, 100, 1f);
                 lp.setMargins(2, 2, 2, 2);
                 row.addView(cell, lp);
             }
@@ -216,16 +215,16 @@ public class GameActivity extends AppCompatActivity {
         // 3. CHECK WIN
         checkWin();
 
-        // 4. FLOOD FILL
+        // 4. FLOOD FILL (Recursive)
         if (n == 0) {
-            int[] dx = {-1, -1, -1, 0, 0, 1, 1, 1};
-            int[] dy = {-1, 0, 1, -1, 1, -1, 0, 1};
             for (int k = 0; k < 8; k++) {
                 int ni = i + dx[k];
                 int nj = j + dy[k];
                 if (ni >= 0 && nj >= 0 && ni < size && nj < size && !revealed[ni][nj]) {
+                    // Get the specific button view from the layout hierarchy
                     LinearLayout row = (LinearLayout) boardContainer.getChildAt(ni);
                     Button nextBtn = (Button) row.getChildAt(nj);
+
                     if (!nextBtn.getText().toString().equals("🚩")) {
                         reveal(ni, nj, nextBtn);
                     }
@@ -234,9 +233,6 @@ public class GameActivity extends AppCompatActivity {
         }
     }
 
-    /**
-     * ROBUST WIN CHECK
-     */
     private void checkWin() {
         if (isGameOver) return;
 
@@ -251,7 +247,9 @@ public class GameActivity extends AppCompatActivity {
         }
 
         if (timerText != null) {
-            String timePart = timerText.getText().toString().split(" \\| ")[0];
+            // Keep timer time, update "Left" count
+            String current = timerText.getText().toString();
+            String timePart = current.contains("|") ? current.split(" \\| ")[0] : current;
             timerText.setText(timePart + " | Left: " + safeLeft);
         }
 
@@ -265,7 +263,7 @@ public class GameActivity extends AppCompatActivity {
         stopTimer();
 
         // Show Overlay
-        overlay.setVisibility(android.view.View.VISIBLE);
+        overlay.setVisibility(View.VISIBLE);
         overlayTitle.setText(win ? "YOU WIN! 🎉" : "GAME OVER 💀");
         overlayTitle.setTextColor(win ? Color.GREEN : Color.RED);
     }
@@ -280,8 +278,14 @@ public class GameActivity extends AppCompatActivity {
                 elapsed++;
                 int m = elapsed / 60;
                 int s = elapsed % 60;
+
+                // Preserve the "Left: X" text if it exists
                 String currentText = timerText.getText().toString();
-                String suffix = currentText.contains("|") ? " | " + currentText.split(" \\| ")[1] : "";
+                String suffix = "";
+                if (currentText.contains("|")) {
+                    String[] parts = currentText.split(" \\| ");
+                    if (parts.length > 1) suffix = " | " + parts[1];
+                }
 
                 timerText.setText(String.format("%02d:%02d%s", m, s, suffix));
             }
