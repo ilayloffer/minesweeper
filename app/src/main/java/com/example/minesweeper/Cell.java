@@ -15,7 +15,7 @@ public class Cell {
     }
 
     // Getters and Setters are required for Firestore
-    public boolean isHasMine() { return hasMine; }
+    public boolean getHasMine() { return hasMine; }
     public void setHasMine(boolean hasMine) { this.hasMine = hasMine; }
 
     public int getNeighborMines() { return neighborMines; }
