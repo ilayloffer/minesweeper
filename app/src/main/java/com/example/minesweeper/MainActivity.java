@@ -90,21 +90,41 @@ public class MainActivity extends AppCompatActivity {
         });
 
         // --- Buttons ---
+
+        // 1. כפתור משחק רגיל (Offline)
         startBtn.setOnClickListener(v -> {
-            // Calculation: Base size 5 + progress.
-            // If progress is 0, size is 5x5.
             int size = difficultySeek.getProgress() + 5;
             Intent intent = new Intent(MainActivity.this, GameActivity.class);
             intent.putExtra("size", size);
+            intent.putExtra("isOnline", false); // הוספנו את ההגדרה שזה אופליין
             startActivity(intent);
         });
 
+        // 2. כפתור משחק רשת (Online)
         startOnlineBtn.setOnClickListener(v -> {
-            if (mAuth.getCurrentUser() == null) {
+            FirebaseUser currentUser = mAuth.getCurrentUser();
+            if (currentUser == null) {
                 Toast.makeText(this, "Please Login to play Online", Toast.LENGTH_SHORT).show();
                 startActivity(new Intent(MainActivity.this, LoginActivity.class));
             } else {
-                startActivity(new Intent(MainActivity.this, OnlineGameActivity.class));
+                int size = difficultySeek.getProgress() + 5;
+                Intent intent = new Intent(MainActivity.this, GameActivity.class);
+
+                // שליחת הנתונים ל-GameActivity המאוחד
+                intent.putExtra("isOnline", true);
+                intent.putExtra("size", size);
+                intent.putExtra("gameId", "global_room"); // שם החדר ב-Firebase (אפשר לשנות בעתיד לחדרים פרטיים)
+
+                // משיכת שם המשתמש מ-Firebase לטובת המשחק
+                String userName = currentUser.getDisplayName();
+                if (userName == null || userName.isEmpty()) {
+                    userName = currentUser.getEmail(); // גיבוי למייל אם אין שם
+                }
+
+                intent.putExtra("currentUser", userName);
+                intent.putExtra("otherPlayer", "opponent"); // כרגע כשם זמני לשחקן השני
+
+                startActivity(intent);
             }
         });
 
