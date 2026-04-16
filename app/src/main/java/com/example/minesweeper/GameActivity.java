@@ -1,10 +1,10 @@
 package com.example.minesweeper;
 
+import android.content.Intent;
 import android.graphics.Color;
 import android.os.Bundle;
 import android.view.View;
 import android.widget.Button;
-import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -13,158 +13,144 @@ import androidx.appcompat.app.AppCompatActivity;
 
 public class GameActivity extends AppCompatActivity implements GameView {
 
-    private LinearLayout boardContainer;
     private TextView statusText;
-    private FrameLayout overlay;
+    private LinearLayout boardContainer;
+    private View overlay;
     private TextView overlayTitle;
+    private Button btnHome;
 
     private GameController controller;
     private Button[][] buttons;
     private int size;
+    private boolean isOnline;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_game);
 
+        // חיבור רכיבי ה-UI מה-XML
+        statusText = findViewById(R.id.statusText);
         boardContainer = findViewById(R.id.boardContainer);
-        statusText = findViewById(R.id.statusText); // Use timerText's ID here if needed
         overlay = findViewById(R.id.overlay);
         overlayTitle = findViewById(R.id.overlayTitle);
+        btnHome = findViewById(R.id.btnHome);
 
-        // קריאת נתונים שהועברו מהמסך הראשי
-        boolean isOnline = getIntent().getBooleanExtra("isOnline", false);
-        size = getIntent().getIntExtra("size", 8);
+        // קבלת נתונים מה-MainActivity
+        Intent intent = getIntent();
+        size = intent.getIntExtra("size", 10);
+        isOnline = intent.getBooleanExtra("isOnline", false);
 
-        buildUi();
+        createBoardUI();
 
+        // אתחול הקונטרולר המתאים
+// אתחול הקונטרולר המתאים
         if (isOnline) {
-            String gameId = getIntent().getStringExtra("gameId");
-            String user = getIntent().getStringExtra("currentUser");
-            String other = getIntent().getStringExtra("otherPlayer");
-            // ברירת מחדל אם לא סופק
-            if(gameId == null) gameId = "testGame";
-            if(user == null) user = "player1";
-            if(other == null) other = "player2";
-
-            controller = new OnlineGameController(this, size, gameId, user, other);
+            String gameId = intent.getStringExtra("gameId");
+            String currentUser = intent.getStringExtra("currentUser");
+            String otherPlayer = intent.getStringExtra("otherPlayer");
+            controller = new OnlineGameController(this, size, gameId, currentUser, otherPlayer);
         } else {
-            controller = new LocalGameController(this, size);
+            controller = new OfflineGameController(this, size);
         }
 
-        // כפתורים במסך (אם יש לך)
-        View btnHome = findViewById(R.id.btnHome);
-        if (btnHome != null) btnHome.setOnClickListener(v -> finish());
-
-        View resetBtn = findViewById(R.id.resetBtn);
-        if (resetBtn != null) resetBtn.setOnClickListener(v -> recreate());
-
-        View btnNewGame = findViewById(R.id.btnNewGame);
-        if (btnNewGame != null) btnNewGame.setOnClickListener(v -> recreate());
+        // כפתור חזרה לתפריט הראשי בסיום המשחק
+        btnHome.setOnClickListener(v -> finish());
     }
 
-    private void buildUi() {
-        boardContainer.removeAllViews();
+    private void createBoardUI() {
         buttons = new Button[size][size];
+        boardContainer.removeAllViews();
 
         for (int i = 0; i < size; i++) {
             LinearLayout row = new LinearLayout(this);
             row.setOrientation(LinearLayout.HORIZONTAL);
-            row.setLayoutParams(new LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT));
-
             for (int j = 0; j < size; j++) {
-                final int r = i, c = j;
                 Button btn = new Button(this);
-                btn.setText("");
-                btn.setTextSize(14f);
-                btn.setPadding(0,0,0,0);
+                LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(100, 100);
+                params.setMargins(2, 2, 2, 2);
+                btn.setLayoutParams(params);
+                btn.setBackgroundColor(Color.LTGRAY);
 
-                btn.setOnClickListener(v -> controller.onCellClicked(r, c));
+                final int r = i;
+                final int c = j;
+
+                btn.setOnClickListener(v -> {
+                    if (controller != null) controller.onCellClicked(r, c);
+                });
+
                 btn.setOnLongClickListener(v -> {
-                    controller.onCellLongClicked(r, c);
+                    if (controller != null) controller.onCellLongClicked(r, c);
                     return true;
                 });
 
                 buttons[i][j] = btn;
-
-                LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
-                        0, 120, 1f);
-                params.setMargins(2, 2, 2, 2);
-                row.addView(btn, params);
+                row.addView(btn);
             }
             boardContainer.addView(row);
         }
     }
 
-    // --- יישום GameView ---
+    // --- מימוש פונקציות ה-GameView ---
 
     @Override
-    public void updateCell(int r, int c, Cell cell) {
-        Button btn = buttons[r][c];
-
-        if (cell.isRevealed()) {
-            btn.setEnabled(false);
-            if (cell.getHasMine()) {
-                btn.setText("💣");
-                btn.setBackgroundColor(Color.RED);
-            } else {
-                btn.setText(cell.getNeighborMines() > 0 ? String.valueOf(cell.getNeighborMines()) : "");
-                btn.setBackgroundColor(Color.LTGRAY);
-
-                // צבעי טקסט לפי מספר
-                int n = cell.getNeighborMines();
-                if (n == 1) btn.setTextColor(Color.BLUE);
-                else if (n == 2) btn.setTextColor(Color.parseColor("#006400"));
-                else if (n == 3) btn.setTextColor(Color.RED);
-                else btn.setTextColor(Color.BLACK);
-            }
-        } else {
-            btn.setText(cell.isFlagged() ? "🚩" : "");
-            btn.setEnabled(true);
-            btn.setBackgroundColor(Color.parseColor("#DDDDDD"));
-        }
+    public void updateStatus(String status) {
+        // פונקציה זו קריטית! היא מעדכנת את הטיימר שמופיע במסך
+        runOnUiThread(() -> statusText.setText(status));
     }
 
     @Override
-    public void updateStatus(String text) {
-        if(statusText != null) {
-            statusText.setText(text);
-        }
+    public void updateCell(int r, int c, Cell cell) {
+        runOnUiThread(() -> {
+            Button btn = buttons[r][c];
+            if (cell.isRevealed()) {
+                btn.setEnabled(false);
+                if (cell.getHasMine()) {
+                    btn.setText("💣");
+                    btn.setBackgroundColor(Color.RED);
+                } else {
+                    btn.setBackgroundColor(Color.WHITE);
+                    int neighbors = cell.getNeighborMines();
+                    if (neighbors > 0) {
+                        btn.setText(String.valueOf(neighbors));
+                    } else {
+                        btn.setText("");
+                    }
+                }
+            } else if (cell.isFlagged()) {
+                btn.setText("🚩");
+            } else {
+                btn.setText("");
+                btn.setEnabled(true);
+            }
+        });
     }
 
     @Override
     public void setBoardEnabled(boolean enabled) {
-        for (int i = 0; i < size; i++) {
-            for (int j = 0; j < size; j++) {
-                // אנחנו מאפשרים לחיצה רק אם הלוח פתוח, והתא עדיין לא נחשף
-                buttons[i][j].setClickable(enabled);
-                buttons[i][j].setLongClickable(enabled);
-            }
-        }
-        boardContainer.setAlpha(enabled ? 1.0f : 0.6f);
+        // מונע או מאפשר לחיצה על הלוח בהתאם לתור
+        runOnUiThread(() -> boardContainer.setAlpha(enabled ? 1.0f : 0.5f));
     }
 
     @Override
-    public void showGameOver(boolean win) {
-        if (overlay != null && overlayTitle != null) {
+    public void showGameOver(boolean didIWin) {
+        runOnUiThread(() -> {
+            overlayTitle.setText(didIWin ? "YOU WIN! 🎉" : "YOU LOSE! 💥");
+            overlayTitle.setTextColor(didIWin ? Color.GREEN : Color.RED);
             overlay.setVisibility(View.VISIBLE);
-            overlayTitle.setText(win ? "YOU WIN! 🎉" : "GAME OVER 💀");
-            overlayTitle.setTextColor(win ? Color.GREEN : Color.RED);
-        } else {
-            Toast.makeText(this, win ? "YOU WIN!" : "GAME OVER", Toast.LENGTH_LONG).show();
-        }
+        });
     }
 
     @Override
-    public void showMessage(String message) {
-        Toast.makeText(this, message, Toast.LENGTH_SHORT).show();
+    public void showMessage(String msg) {
+        runOnUiThread(() -> Toast.makeText(GameActivity.this, msg, Toast.LENGTH_SHORT).show());
     }
 
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        if (controller != null) controller.onDestroy();
+        if (controller != null) {
+            controller.onDestroy();
+        }
     }
 }

@@ -17,6 +17,7 @@ import android.widget.Toast;
 
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
+import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 
 import com.google.firebase.auth.FirebaseAuth;
@@ -49,7 +50,6 @@ public class MainActivity extends AppCompatActivity {
             });
 
     // BroadcastReceiver for network changes
-    // Ensure you have a class named NetworkChangeReceiver in your project!
     private final BroadcastReceiver networkReceiver = new NetworkChangeReceiver();
 
     @Override
@@ -68,9 +68,8 @@ public class MainActivity extends AppCompatActivity {
         startOnlineBtn = findViewById(R.id.StartOnl);
 
         // --- Difficulty Logic ---
-        // Load saved difficulty (default to 5)
         int savedDifficulty = prefs.getInt("difficulty", 5);
-        difficultySeek.setMax(15); // Max size 20 (5 min + 15)
+        difficultySeek.setMax(15);
         difficultySeek.setProgress(savedDifficulty);
         updateDifficultyLabel(savedDifficulty);
 
@@ -93,10 +92,11 @@ public class MainActivity extends AppCompatActivity {
 
         // 1. כפתור משחק רגיל (Offline)
         startBtn.setOnClickListener(v -> {
+            // באופליין לוקחים את הגודל מהסליידר
             int size = difficultySeek.getProgress() + 5;
             Intent intent = new Intent(MainActivity.this, GameActivity.class);
             intent.putExtra("size", size);
-            intent.putExtra("isOnline", false); // הוספנו את ההגדרה שזה אופליין
+            intent.putExtra("isOnline", false);
             startActivity(intent);
         });
 
@@ -107,24 +107,30 @@ public class MainActivity extends AppCompatActivity {
                 Toast.makeText(this, "Please Login to play Online", Toast.LENGTH_SHORT).show();
                 startActivity(new Intent(MainActivity.this, LoginActivity.class));
             } else {
-                int size = difficultySeek.getProgress() + 5;
-                Intent intent = new Intent(MainActivity.this, GameActivity.class);
+                String[] roles = {"Player 1 (Host Game)", "Player 2 (Join Game)"};
 
-                // שליחת הנתונים ל-GameActivity המאוחד
-                intent.putExtra("isOnline", true);
-                intent.putExtra("size", size);
-                intent.putExtra("gameId", "global_room"); // שם החדר ב-Firebase (אפשר לשנות בעתיד לחדרים פרטיים)
+                new AlertDialog.Builder(this)
+                        .setTitle("Select your role")
+                        .setItems(roles, (dialog, which) -> {
 
-                // משיכת שם המשתמש מ-Firebase לטובת המשחק
-                String userName = currentUser.getDisplayName();
-                if (userName == null || userName.isEmpty()) {
-                    userName = currentUser.getEmail(); // גיבוי למייל אם אין שם
-                }
+                            // התיקון: באונליין הגודל תמיד מקובע ל-10!
+                            int size = 10;
 
-                intent.putExtra("currentUser", userName);
-                intent.putExtra("otherPlayer", "opponent"); // כרגע כשם זמני לשחקן השני
+                            Intent intent = new Intent(MainActivity.this, GameActivity.class);
+                            intent.putExtra("isOnline", true);
+                            intent.putExtra("size", size);
+                            intent.putExtra("gameId", "global_room");
 
-                startActivity(intent);
+                            if (which == 0) { // בחר שחקן 1
+                                intent.putExtra("currentUser", "player1");
+                                intent.putExtra("otherPlayer", "player2");
+                            } else { // בחר שחקן 2
+                                intent.putExtra("currentUser", "player2");
+                                intent.putExtra("otherPlayer", "player1");
+                            }
+
+                            startActivity(intent);
+                        }).show();
             }
         });
 
@@ -144,9 +150,8 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onResume() {
         super.onResume();
-        // This ensures the name updates immediately after returning from RegisterActivity
         updateWelcomeMessage();
-        invalidateOptionsMenu(); // Force menu to redraw (Update Login/Logout buttons)
+        invalidateOptionsMenu();
     }
 
     private void updateWelcomeMessage() {
@@ -154,26 +159,21 @@ public class MainActivity extends AppCompatActivity {
         String displayInternal;
 
         if (currentUser != null) {
-            // Priority 1: Get from Firebase Auth (Synced with RegisterActivity)
             String fbName = currentUser.getDisplayName();
             if (fbName != null && !fbName.isEmpty()) {
                 displayInternal = fbName;
             } else {
-                // Priority 2: Fallback to Intent or Prefs if Firebase name is empty
                 displayInternal = getIntent().getStringExtra("USERNAME");
             }
         } else {
             displayInternal = "Guest";
         }
 
-        // Final fallback
         if (displayInternal == null) displayInternal = "Player";
-
         tvWelcome.setText("Welcome, " + displayInternal + "!");
     }
 
     private void updateDifficultyLabel(int progress) {
-        // Minimum size 5, so 0 progress = 5x5
         int size = progress + 5;
         difficultyLabel.setText("Board Size: " + size + " x " + size);
     }
@@ -184,7 +184,7 @@ public class MainActivity extends AppCompatActivity {
         try {
             unregisterReceiver(networkReceiver);
         } catch (IllegalArgumentException e) {
-            // Receiver not registered or already unregistered
+            // תתעלם אם לא נרשם
         }
     }
 
@@ -195,11 +195,9 @@ public class MainActivity extends AppCompatActivity {
     public boolean onCreateOptionsMenu(Menu menu) {
         getMenuInflater().inflate(R.menu.main_menu, menu);
 
-        // Handle Music Checkbox visual state
         MenuItem musicItem = menu.findItem(R.id.action_music);
         musicItem.setChecked(prefs.getBoolean("music_on", false));
 
-        // Handle Login/Logout visibility
         boolean isLoggedIn = mAuth.getCurrentUser() != null;
 
         MenuItem loginItem = menu.findItem(R.id.menu_login);
@@ -243,8 +241,6 @@ public class MainActivity extends AppCompatActivity {
         else if (id == R.id.menu_logout) {
             mAuth.signOut();
             Toast.makeText(this, "Logged out", Toast.LENGTH_SHORT).show();
-
-            // Refresh the screen to show "Guest" and update buttons
             updateWelcomeMessage();
             invalidateOptionsMenu();
             return true;
