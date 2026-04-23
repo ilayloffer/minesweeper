@@ -2,10 +2,7 @@ package com.example.minesweeper;
 
 import android.os.CountDownTimer;
 
-import com.google.firebase.firestore.DocumentReference;
-import com.google.firebase.firestore.DocumentSnapshot;
-import com.google.firebase.firestore.FirebaseFirestore;
-import com.google.firebase.firestore.ListenerRegistration;
+import com.google.firebase.database.*;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -14,8 +11,8 @@ import java.util.Random;
 public class OnlineGameController implements GameController {
     private final GameView view;
     private final int size;
-    private final FirebaseFirestore firestore;
-    private ListenerRegistration listener;
+    private DatabaseReference gameRef;
+    private ValueEventListener listener;
 
     private final String gameId;
     private final String currentUser;
@@ -37,31 +34,36 @@ public class OnlineGameController implements GameController {
         this.gameId = gameId;
         this.currentUser = currentUser;
         this.otherPlayer = otherPlayer;
-        this.firestore = FirebaseFirestore.getInstance();
+        this.gameRef = FirebaseDatabase.getInstance()
+                .getReference("games")
+                .child(gameId);
         this.localBoard = new Cell[size][size];
 
         listenToFirebase();
     }
 
     private void listenToFirebase() {
-        DocumentReference ref = firestore.collection("games").document(gameId);
 
         if (currentUser.equals("player1")) {
-            createNewGame(ref);
+            createNewGame();
         }
 
-        listener = ref.addSnapshotListener((doc, e) -> {
-            if (e != null) {
-                view.showMessage("Connection error");
-                return;
+        listener = gameRef.addValueEventListener(new ValueEventListener() {
+            @Override
+            public void onDataChange(DataSnapshot snapshot) {
+                if (!snapshot.exists()) return;
+
+                parseAndUpdateBoard(snapshot);
             }
-            if (doc != null && doc.exists()) {
-                parseAndUpdateBoard(doc);
+
+            @Override
+            public void onCancelled(DatabaseError error) {
+                view.showMessage("Connection error");
             }
         });
     }
 
-    private void createNewGame(DocumentReference ref) {
+    private void createNewGame() {
         Map<String, Object> boardMap = new HashMap<>();
         boolean[][] tempMines = new boolean[size][size];
         Random r = new Random();
@@ -92,15 +94,15 @@ public class OnlineGameController implements GameController {
         game.put(currentUser + "_misses", 0);
         game.put(otherPlayer + "_misses", 0);
 
-        ref.set(game);
+        gameRef.setValue(game);
     }
 
     @SuppressWarnings("unchecked")
-    private void parseAndUpdateBoard(DocumentSnapshot doc) {
+    private void parseAndUpdateBoard(DataSnapshot doc) {
         if (isGameOver) return;
 
-        Long myMisses = doc.getLong(currentUser + "_misses");
-        Long otherMisses = doc.getLong(otherPlayer + "_misses");
+        Long myMisses = doc.child(currentUser + "_misses").getValue(Long.class);
+        Long otherMisses = doc.child(otherPlayer + "_misses").getValue(Long.class);
 
         if (myMisses != null && myMisses >= 3) {
             endGame(false);
@@ -111,32 +113,31 @@ public class OnlineGameController implements GameController {
             return;
         }
 
-        currentTurn = doc.getString("playerTurn");
+        currentTurn = doc.child("playerTurn").getValue(String.class);
         boolean isMyTurn = currentUser.equals(currentTurn);
         view.setBoardEnabled(isMyTurn);
 
-        Map<String, Object> boardMap = (Map<String, Object>) doc.get("board");
-        if (boardMap == null) return;
+        DataSnapshot boardSnap = doc.child("board");
 
         for (int i = 0; i < size; i++) {
             for (int j = 0; j < size; j++) {
+
                 String key = i + "_" + j;
-                Map<String, Object> cellData = (Map<String, Object>) boardMap.get(key);
+                DataSnapshot cellSnap = boardSnap.child(key);
 
-                if (cellData != null) {
+                if (cellSnap.exists()) {
+
                     Cell cell = new Cell();
-                    cell.setRevealed((boolean) cellData.getOrDefault("revealed", false));
-                    cell.setHasMine((boolean) cellData.getOrDefault("hasMine", false));
-                    cell.setNeighborMines(((Long) cellData.getOrDefault("neighborMines", 0L)).intValue());
-                    cell.setFlagged((boolean) cellData.getOrDefault("flagged", false));
+                    cell.setRevealed(Boolean.TRUE.equals(cellSnap.child("revealed").getValue(Boolean.class)));
+                    cell.setHasMine(Boolean.TRUE.equals(cellSnap.child("hasMine").getValue(Boolean.class)));
 
-                    localBoard[i][j] = cell; // שמירת המצב המעודכן בזיכרון המקומי
+                    Long n = cellSnap.child("neighborMines").getValue(Long.class);
+                    cell.setNeighborMines(n == null ? 0 : n.intValue());
+
+                    cell.setFlagged(Boolean.TRUE.equals(cellSnap.child("flagged").getValue(Boolean.class)));
+
+                    localBoard[i][j] = cell;
                     view.updateCell(i, j, cell);
-
-                    if (cell.isRevealed() && cell.getHasMine()) {
-                        endGame(!isMyTurn);
-                        return;
-                    }
                 }
             }
         }
@@ -168,20 +169,33 @@ public class OnlineGameController implements GameController {
     }
 
     private void handleTimeout(boolean isMyTurn) {
-        // התיקון: רק השחקן שזה התור שלו יכול להכריז שנגמר לו הזמן!
-        // זה מונע משני המכשירים לתת פסילות אחד לשני בבת אחת.
+
         if (isGameOver || !isMyTurn) return;
 
-        DocumentReference ref = firestore.collection("games").document(gameId);
+        gameRef.addListenerForSingleValueEvent(new ValueEventListener() {
+            @Override
+            public void onDataChange(DataSnapshot snapshot) {
 
-        ref.get().addOnSuccessListener(doc -> {
-            if (!doc.exists()) return;
+                if (!snapshot.exists()) return;
 
-            long currentMisses = doc.getLong(currentUser + "_misses") != null ? doc.getLong(currentUser + "_misses") : 0;
-            ref.update(
-                    "playerTurn", otherPlayer,
-                    currentUser + "_misses", currentMisses + 1
-            );
+                Long misses = snapshot.child(currentUser + "_misses")
+                        .getValue(Long.class);
+
+                if (misses == null) misses = 0L;
+
+                long newMisses = misses + 1;
+
+                Map<String, Object> updates = new HashMap<>();
+                updates.put(currentUser + "_misses", newMisses);
+                updates.put("playerTurn", otherPlayer);
+
+                gameRef.updateChildren(updates);
+            }
+
+            @Override
+            public void onCancelled(DatabaseError error) {
+                view.showMessage("Timeout error");
+            }
         });
     }
 
@@ -194,57 +208,100 @@ public class OnlineGameController implements GameController {
 
     @Override
     public void onCellClicked(int r, int c) {
-        if (!currentUser.equals(currentTurn) || isGameOver) {
+
+        // 1. בדיקות בסיס
+        if (isGameOver) return;
+
+        if (!currentUser.equals(currentTurn)) {
             view.showMessage("Wait for your turn!");
             return;
         }
-        if (localBoard[r][c].isRevealed() || localBoard[r][c].isFlagged()) return;
 
-        DocumentReference ref = firestore.collection("games").document(gameId);
+        if (localBoard[r][c] == null) return;
 
-        // יצירת מילון שיכיל את כל העדכונים בבת אחת
-        Map<String, Object> updates = new HashMap<>();
-        updates.put("playerTurn", otherPlayer);
-        updates.put(currentUser + "_misses", 0); // איפוס פסילות כי הוא שיחק
+        Cell cell = localBoard[r][c];
 
-        // הפעלת פתיחת השטחים
-        floodFill(r, c, updates);
+        if (cell.isRevealed() || cell.isFlagged()) return;
 
-        // שליחה מרוכזת ל-Firebase
-        ref.update(updates).addOnFailureListener(e -> view.showMessage("Error moving"));
+        // 2. אם לחצו על מוקש → אפשר להרחיב בעתיד
+        if (cell.getHasMine()) {
+
+            cell.setRevealed(true);
+
+            gameRef.child("board")
+                    .child(r + "_" + c)
+                    .child("revealed")
+                    .setValue(true);
+
+            // עדכון טעות + מעבר תור
+            gameRef.child(currentUser + "_misses").setValue(
+                    getLocalMissesSnapshot() + 1
+            );
+
+            gameRef.child("playerTurn").setValue(otherPlayer);
+
+            return;
+        }
+
+        // 3. פתיחת שטח רגילה
+        floodFill(r, c);
+
+        // 4. סיום מהלך → מעבר תור
+        gameRef.child("playerTurn").setValue(otherPlayer);
+        gameRef.child(currentUser + "_misses").setValue(0);
+    }
+
+    private long getLocalMissesSnapshot() {
+        // fallback פשוט למקרה שאין לך שמירה מקומית
+        return 0;
     }
 
     // הפונקציה שפותחת משבצות ריקות מסביב (רקורסיה)
-    private void floodFill(int r, int c, Map<String, Object> updates) {
+    private void floodFill(int r, int c) {
+
         if (r < 0 || c < 0 || r >= size || c >= size) return;
 
         Cell cell = localBoard[r][c];
+
         if (cell.isRevealed() || cell.isFlagged()) return;
 
-        // מסמנים כפתוח מקומית כדי שלא נחזור אליו בטעות, ומוסיפים לעדכון
         cell.setRevealed(true);
-        updates.put("board." + r + "_" + c + ".revealed", true);
 
-        // אם יש 0 מוקשים בסביבה - ממשיכים לכל השכנים
+        gameRef.child("board")
+                .child(r + "_" + c)
+                .child("revealed")
+                .setValue(true);
+
         if (cell.getNeighborMines() == 0 && !cell.getHasMine()) {
+
             for (int k = 0; k < 8; k++) {
-                floodFill(r + dx[k], c + dy[k], updates);
+                floodFill(r + dx[k], c + dy[k]);
             }
         }
     }
 
     @Override
     public void onCellLongClicked(int r, int c) {
+
         if (!currentUser.equals(currentTurn) || isGameOver) return;
 
-        DocumentReference ref = firestore.collection("games").document(gameId);
         boolean currentFlag = localBoard[r][c].isFlagged();
-        ref.update("board." + r + "_" + c + ".flagged", !currentFlag);
+
+        gameRef.child("board")
+                .child(r + "_" + c)
+                .child("flagged")
+                .setValue(!currentFlag);
     }
 
     @Override
     public void onDestroy() {
-        if (listener != null) listener.remove();
-        if (turnTimer != null) turnTimer.cancel();
+
+        if (listener != null && gameRef != null) {
+            gameRef.removeEventListener(listener);
+        }
+
+        if (turnTimer != null) {
+            turnTimer.cancel();
+        }
     }
 }

@@ -10,7 +10,11 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
-import com.google.firebase.firestore.*;
+import com.google.firebase.database.DatabaseReference;
+import com.google.firebase.database.FirebaseDatabase;
+import com.google.firebase.database.DataSnapshot;
+import com.google.firebase.database.DatabaseError;
+import com.google.firebase.database.ValueEventListener;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -19,7 +23,7 @@ public class LeaderboardActivity extends AppCompatActivity {
 
     private RecyclerView recyclerLeaderboard;
     private LeaderboardAdapter adapter;
-    private FirebaseFirestore firestore;
+    private DatabaseReference leaderboardRef;
 
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
@@ -32,7 +36,7 @@ public class LeaderboardActivity extends AppCompatActivity {
         adapter = new LeaderboardAdapter();
         recyclerLeaderboard.setAdapter(adapter);
 
-        firestore = FirebaseFirestore.getInstance();
+        leaderboardRef = FirebaseDatabase.getInstance().getReference("leaderboard");
         loadLeaderboard();
 
         // Add this inside onCreate()
@@ -46,23 +50,40 @@ public class LeaderboardActivity extends AppCompatActivity {
     }
 
     private void loadLeaderboard() {
-        firestore.collection("leaderboard")
-                .orderBy("time", Query.Direction.ASCENDING)
-                .limit(10)
-                .get()
-                .addOnSuccessListener(queryDocumentSnapshots -> {
-                    List<Score> scores = new ArrayList<>();
-                    for (DocumentSnapshot doc : queryDocumentSnapshots) {
-                        String player = doc.getString("player");
-                        Long time = doc.getLong("time");
-                        Long difficulty = doc.getLong("difficulty");
-                        if (player != null && time != null && difficulty != null) {
-                            scores.add(new Score(player, time.intValue(), difficulty.intValue()));
+
+        leaderboardRef
+                .orderByChild("time")
+                .limitToFirst(10)
+                .addListenerForSingleValueEvent(new ValueEventListener() {
+                    @Override
+                    public void onDataChange(DataSnapshot snapshot) {
+
+                        List<Score> scores = new ArrayList<>();
+
+                        for (DataSnapshot doc : snapshot.getChildren()) {
+
+                            String player = doc.child("player").getValue(String.class);
+                            Long time = doc.child("time").getValue(Long.class);
+                            Long difficulty = doc.child("difficulty").getValue(Long.class);
+
+                            if (player != null && time != null && difficulty != null) {
+                                scores.add(new Score(
+                                        player,
+                                        time.intValue(),
+                                        difficulty.intValue()
+                                ));
+                            }
                         }
+
+                        adapter.setScores(scores);
                     }
-                    adapter.setScores(scores);
-                })
-                .addOnFailureListener(e ->
-                        Toast.makeText(this, "Failed to load leaderboard", Toast.LENGTH_SHORT).show());
+
+                    @Override
+                    public void onCancelled(DatabaseError error) {
+                        Toast.makeText(LeaderboardActivity.this,
+                                "Failed to load leaderboard",
+                                Toast.LENGTH_SHORT).show();
+                    }
+                });
     }
 }

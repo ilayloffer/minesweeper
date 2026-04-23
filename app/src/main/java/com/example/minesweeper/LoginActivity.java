@@ -14,12 +14,13 @@ import androidx.appcompat.app.AppCompatActivity;
 import com.google.android.material.textfield.TextInputEditText;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseUser;
-import com.google.firebase.firestore.FirebaseFirestore;
+import com.google.firebase.database.DatabaseReference;
+import com.google.firebase.database.FirebaseDatabase;
 
 public class LoginActivity extends AppCompatActivity {
 
     private FirebaseAuth auth;
-    private FirebaseFirestore db;
+    private DatabaseReference usersRef;
     private TextInputEditText etEmail, etPassword;
     private ProgressBar progressBar;
 
@@ -29,7 +30,7 @@ public class LoginActivity extends AppCompatActivity {
         setContentView(R.layout.activity_login);
 
         auth = FirebaseAuth.getInstance();
-        db = FirebaseFirestore.getInstance();
+        usersRef = FirebaseDatabase.getInstance().getReference("users");
 
         etEmail = findViewById(R.id.etEmailLogin);
         etPassword = findViewById(R.id.etPasswordLogin);
@@ -63,28 +64,28 @@ public class LoginActivity extends AppCompatActivity {
                         FirebaseUser user = auth.getCurrentUser();
                         if (user == null) return;
 
-                        // 🔥 FETCH USERNAME FROM FIRESTORE
-                        db.collection("users")
-                                .document(user.getUid())
+                        // 🔥 FETCH USERNAME FROM DB
+                        usersRef.child(user.getUid())
                                 .get()
-                                .addOnSuccessListener(doc -> {
+                                .addOnSuccessListener(snapshot -> {
+
                                     progressBar.setVisibility(View.GONE);
 
-                                    String username = doc.getString("username");
+                                    String username = snapshot.child("username").getValue(String.class);
+
                                     if (username == null || username.isEmpty()) {
                                         username = "Player";
                                     }
 
-                                    // 💾 Save locally
                                     SharedPreferences prefs =
                                             getSharedPreferences("MinePrefs", MODE_PRIVATE);
                                     prefs.edit().putString("username", username).apply();
 
-                                    // 🚀 Open MainActivity
                                     Intent intent = new Intent(LoginActivity.this, MainActivity.class);
                                     intent.putExtra("USERNAME", username);
                                     startActivity(intent);
                                     finish();
+
                                 })
                                 .addOnFailureListener(e -> {
                                     progressBar.setVisibility(View.GONE);

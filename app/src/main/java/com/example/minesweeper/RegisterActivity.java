@@ -8,25 +8,32 @@ import android.widget.ImageButton;
 import android.widget.ProgressBar;
 import android.widget.Toast;
 
+import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
 
+import com.google.android.gms.tasks.OnFailureListener;
+import com.google.android.gms.tasks.OnSuccessListener;
 import com.google.android.material.textfield.TextInputEditText;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseUser;
 import com.google.firebase.auth.UserProfileChangeRequest;
-import com.google.firebase.firestore.FirebaseFirestore;
-import com.google.firebase.firestore.QuerySnapshot;
 
 import java.util.HashMap;
 import java.util.Map;
+
+import com.google.firebase.database.DataSnapshot;
+import com.google.firebase.database.DatabaseError;
+import com.google.firebase.database.DatabaseReference;
+import com.google.firebase.database.FirebaseDatabase;
+import com.google.firebase.database.ValueEventListener;
 
 public class RegisterActivity extends AppCompatActivity {
 
     private FirebaseAuth auth;
     private TextInputEditText etEmail, etPassword, etUsername;
     private ProgressBar progressBar;
-    private FirebaseFirestore db;
+    private DatabaseReference usersRef;
 
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
@@ -35,7 +42,7 @@ public class RegisterActivity extends AppCompatActivity {
 
         // Initialize Firebase instances
         auth = FirebaseAuth.getInstance();
-        db = FirebaseFirestore.getInstance();
+        usersRef = FirebaseDatabase.getInstance().getReference("users");
 
         // Bind Views
         etEmail = findViewById(R.id.etEmail);
@@ -60,25 +67,29 @@ public class RegisterActivity extends AppCompatActivity {
 
         progressBar.setVisibility(View.VISIBLE);
 
-        // Check if username exists in Firestore
-        // NOTE: This requires Firestore rules to allow unauthenticated reads for this collection!
-        db.collection("users")
-                .whereEqualTo("username", username)
-                .get()
-                .addOnCompleteListener(task -> {
-                    if (task.isSuccessful()) {
-                        QuerySnapshot snapshot = task.getResult();
-                        if (snapshot != null && !snapshot.isEmpty()) {
-                            progressBar.setVisibility(View.GONE);
-                            Toast.makeText(this, "שם המשתמש כבר קיים", Toast.LENGTH_SHORT).show();
+        usersRef.orderByChild("username")
+                .equalTo(username)
+                .addListenerForSingleValueEvent(new ValueEventListener() {
+                    @Override
+                    public void onDataChange(DataSnapshot snapshot) {
+
+                        progressBar.setVisibility(View.GONE);
+
+                        if (snapshot.exists()) {
+                            Toast.makeText(RegisterActivity.this,
+                                    "שם המשתמש כבר קיים",
+                                    Toast.LENGTH_SHORT).show();
                         } else {
-                            // Username is free, proceed to register
                             registerUser();
                         }
-                    } else {
+                    }
+
+                    @Override
+                    public void onCancelled(DatabaseError error) {
                         progressBar.setVisibility(View.GONE);
-                        // If the check fails (e.g., permission denied), we warn the user
-                        Toast.makeText(this, "שגיאה בבדיקת שם משתמש - נסה שוב", Toast.LENGTH_SHORT).show();
+                        Toast.makeText(RegisterActivity.this,
+                                "שגיאה בבדיקת שם משתמש",
+                                Toast.LENGTH_SHORT).show();
                     }
                 });
     }
@@ -114,13 +125,19 @@ public class RegisterActivity extends AppCompatActivity {
                             user.updateProfile(profileUpdates)
                                     .addOnCompleteListener(profileTask -> {
                                         if (profileTask.isSuccessful()) {
-                                            // 3. Save to Firestore only after profile is updated
-                                            saveUserToFirestore(user.getUid(), email, username);
+                                            // 3. Save to DB only after profile is updated
+                                            saveUserToRealtimeDB(user.getUid(), email, username);
+                                            Toast.makeText(this, "BBB", Toast.LENGTH_SHORT).show();
                                         } else {
                                             progressBar.setVisibility(View.GONE);
                                             Toast.makeText(this, "Failed to set username", Toast.LENGTH_SHORT).show();
                                         }
                                     });
+                            Toast.makeText(this, "AAAA", Toast.LENGTH_SHORT).show();
+                        }
+                        else {
+                                progressBar.setVisibility(View.GONE);
+                                Toast.makeText(this, "User is null!", Toast.LENGTH_LONG).show();
                         }
                     } else {
                         progressBar.setVisibility(View.GONE);
@@ -130,31 +147,36 @@ public class RegisterActivity extends AppCompatActivity {
                 });
     }
 
-    private void saveUserToFirestore(String userId, String email, String username) {
+    private void saveUserToRealtimeDB(String userId, String email, String username) {
         Map<String, Object> userMap = new HashMap<>();
         userMap.put("email", email);
         userMap.put("username", username);
         // You can add more fields here (e.g., score: 0)
         userMap.put("score", 0);
 
-        db.collection("users").document(userId).set(userMap)
-                .addOnSuccessListener(aVoid -> {
-                    progressBar.setVisibility(View.GONE);
-                    Toast.makeText(this, "נרשמת בהצלחה!", Toast.LENGTH_LONG).show();
+        usersRef.child(userId).setValue(userMap)
+                .addOnSuccessListener(new OnSuccessListener<Void>() {
+                    @Override
+                    public void onSuccess(Void aVoid) {
+                        progressBar.setVisibility(View.GONE);
+                        Toast.makeText(RegisterActivity.this, "נרשמת בהצלחה!", Toast.LENGTH_LONG).show();
 
-                    // 4. Navigate to Home
-                    Intent intent = new Intent(RegisterActivity.this, MainActivity.class);
-                    // Pass the username manually just in case
-                    intent.putExtra("USERNAME", username);
-                    // Clear back stack so they can't go back to register
-                    intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
-                    startActivity(intent);
-                    finish();
+                        Intent intent = new Intent(RegisterActivity.this, MainActivity.class);
+                        intent.putExtra("USERNAME", username);
+                        intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP |
+                                Intent.FLAG_ACTIVITY_NEW_TASK |
+                                Intent.FLAG_ACTIVITY_CLEAR_TASK);
+                        RegisterActivity.this.startActivity(intent);
+                        RegisterActivity.this.finish();
+                    }
                 })
-                .addOnFailureListener(e -> {
-                    progressBar.setVisibility(View.GONE);
-                    // If this Toast appears, you have a Firestore Permissions issue
-                    Toast.makeText(this, "Error Saving DB: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                .addOnFailureListener(new OnFailureListener() {
+                    @Override
+                    public void onFailure(@NonNull Exception e) {
+                        progressBar.setVisibility(View.GONE);
+                        Toast.makeText(RegisterActivity.this, "Error: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                    }
                 });
+        Toast.makeText(this, "CCC", Toast.LENGTH_SHORT).show();
     }
 }
