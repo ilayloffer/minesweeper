@@ -60,10 +60,20 @@
         android:layout_height="wrap_content"/>
 
     <Button
-        android:id="@+id/StartOnl"
+        android:id="@+id/btnOnlineMatch"
         android:text="Play Online"
         android:textSize="18sp"
         android:padding="12dp"
+        android:layout_marginBottom="16dp"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"/>
+
+    <Button
+        android:id="@+id/btnLeaderboard"
+        android:text="Leaderboard 🏆"
+        android:textSize="18sp"
+        android:padding="12dp"
+        android:backgroundTint="#FF9800"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"/>
 

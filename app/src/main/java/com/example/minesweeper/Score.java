@@ -1,6 +1,5 @@
 package com.example.minesweeper;
 
-// הוסף את הייבוא (Imports) הבאים למעלה:
 import com.google.firebase.database.DatabaseReference;
 import com.google.firebase.database.FirebaseDatabase;
 
@@ -8,13 +7,15 @@ public class Score {
     private String player;
     private int time;
     private int difficulty;
+    private int wins; // <-- הוספנו ניצחונות
 
     public Score() {} // Needed for Firebase
 
-    public Score(String player, int time, int difficulty) {
+    public Score(String player, int time, int difficulty, int wins) {
         this.player = player;
         this.time = time;
         this.difficulty = difficulty;
+        this.wins = wins;
     }
 
     public String getPlayer() { return player; }
@@ -26,17 +27,12 @@ public class Score {
     public int getDifficulty() { return difficulty; }
     public void setDifficulty(int difficulty) { this.difficulty = difficulty; }
 
-    /**
-     * פעולה לשמירת התוצאה הנוכחית בטבלת ה-Leaderboard ב-Firebase
-     */
+    public int getWins() { return wins; }
+    public void setWins(int wins) { this.wins = wins; }
+
     public void saveToLeaderboard() {
-        // קבלת רפרנס לענף "leaderboard" במסד הנתונים
         DatabaseReference database = FirebaseDatabase.getInstance().getReference("leaderboard");
-
-        // יצירת מפתח (ID) ייחודי עבור התוצאה החדשה
         String scoreId = database.push().getKey();
-
-        // שמירת אובייקט ה-Score הנוכחי תחת המפתח שנוצר
         if (scoreId != null) {
             database.child(scoreId).setValue(this);
         }

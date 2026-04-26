@@ -2,6 +2,10 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.example.minesweeper">
     <!-- הרשאות לרשת ולשירות קדמי -->
+    <uses-feature
+        android:name="android.hardware.camera"
+        android:required="false" />
+
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
@@ -16,9 +20,6 @@
         android:theme="@style/Theme.Minesweeper">
         <activity
             android:name=".LeaderboardActivity"
-            android:exported="false" />
-        <activity
-            android:name=".OnlineGameActivity"
             android:exported="false" />
         <activity android:name=".LoginActivity" />
         <activity android:name=".RegisterActivity" />
@@ -39,5 +40,5 @@
             android:exported="false"
             android:foregroundServiceType="mediaPlayback" />
     </application>
-
+    <uses-permission android:name="android.permission.CAMERA" />
 </manifest>

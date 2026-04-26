@@ -1,89 +1,110 @@
 package com.example.minesweeper;
 
-import android.content.Intent;
 import android.os.Bundle;
-import android.widget.ImageButton;
+import android.widget.RadioGroup;
 import android.widget.Toast;
-
-import androidx.annotation.Nullable;
+import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
-
-import com.google.firebase.database.DatabaseReference;
-import com.google.firebase.database.FirebaseDatabase;
 import com.google.firebase.database.DataSnapshot;
 import com.google.firebase.database.DatabaseError;
+import com.google.firebase.database.DatabaseReference;
+import com.google.firebase.database.FirebaseDatabase;
 import com.google.firebase.database.ValueEventListener;
-
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 public class LeaderboardActivity extends AppCompatActivity {
 
-    private RecyclerView recyclerLeaderboard;
+    private RecyclerView recyclerView;
     private LeaderboardAdapter adapter;
+    private List<Score> scoresList;
     private DatabaseReference leaderboardRef;
+    private ValueEventListener currentListener; // שומר את המאזין הנוכחי כדי לבטל אותו כשמחליפים מיון
 
     @Override
-    protected void onCreate(@Nullable Bundle savedInstanceState) {
+    protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_leaderboard);
 
-        recyclerLeaderboard = findViewById(R.id.recyclerLeaderboard);
-        recyclerLeaderboard.setLayoutManager(new LinearLayoutManager(this));
+        recyclerView = findViewById(R.id.recyclerViewLeaderboard);
+        recyclerView.setLayoutManager(new LinearLayoutManager(this));
 
-        adapter = new LeaderboardAdapter();
-        recyclerLeaderboard.setAdapter(adapter);
+        scoresList = new ArrayList<>();
+        adapter = new LeaderboardAdapter(scoresList);
+        recyclerView.setAdapter(adapter);
 
         leaderboardRef = FirebaseDatabase.getInstance().getReference("leaderboard");
-        loadLeaderboard();
 
-        // Add this inside onCreate()
-        ImageButton backBtn = findViewById(R.id.backBtn);
-        backBtn.setOnClickListener(v -> {
-            // Return to MainActivity
-            Intent i = new Intent(this, MainActivity.class);
-            startActivity(i);
-            finish();
+        // מאזין לכפתורי הבחירה
+        RadioGroup rgSortOptions = findViewById(R.id.rgSortOptions);
+        rgSortOptions.setOnCheckedChangeListener((group, checkedId) -> {
+            if (checkedId == R.id.rbSortTime) {
+                loadDataByTime();
+            } else if (checkedId == R.id.rbSortWins) {
+                loadDataByWins();
+            }
         });
+
+        // טעינה ראשונית - לפי זמן
+        loadDataByTime();
     }
 
-    private void loadLeaderboard() {
+    private void loadDataByTime() {
+        if (currentListener != null) {
+            leaderboardRef.removeEventListener(currentListener);
+        }
 
-        leaderboardRef
-                .orderByChild("time")
-                .limitToFirst(10)
-                .addListenerForSingleValueEvent(new ValueEventListener() {
+        // מיון לפי זמן - limitToFirst מביא את הזמנים הכי נמוכים קודם
+        currentListener = leaderboardRef.orderByChild("time").limitToFirst(50)
+                .addValueEventListener(new ValueEventListener() {
                     @Override
-                    public void onDataChange(DataSnapshot snapshot) {
-
-                        List<Score> scores = new ArrayList<>();
-
+                    public void onDataChange(@NonNull DataSnapshot snapshot) {
+                        scoresList.clear();
                         for (DataSnapshot doc : snapshot.getChildren()) {
-
-                            String player = doc.child("player").getValue(String.class);
-                            Long time = doc.child("time").getValue(Long.class);
-                            Long difficulty = doc.child("difficulty").getValue(Long.class);
-
-                            if (player != null && time != null && difficulty != null) {
-                                scores.add(new Score(
-                                        player,
-                                        time.intValue(),
-                                        difficulty.intValue()
-                                ));
-                            }
+                            Score score = doc.getValue(Score.class);
+                            if (score != null) scoresList.add(score);
                         }
-
-                        adapter.setScores(scores);
+                        adapter.notifyDataSetChanged();
                     }
 
                     @Override
-                    public void onCancelled(DatabaseError error) {
-                        Toast.makeText(LeaderboardActivity.this,
-                                "Failed to load leaderboard",
-                                Toast.LENGTH_SHORT).show();
+                    public void onCancelled(@NonNull DatabaseError error) {
+                        showError();
                     }
                 });
+    }
+
+    private void loadDataByWins() {
+        if (currentListener != null) {
+            leaderboardRef.removeEventListener(currentListener);
+        }
+
+        // מיון לפי ניצחונות - limitToLast מביא את הכי גבוהים, אבל בסדר עולה
+        currentListener = leaderboardRef.orderByChild("wins").limitToLast(50)
+                .addValueEventListener(new ValueEventListener() {
+                    @Override
+                    public void onDataChange(@NonNull DataSnapshot snapshot) {
+                        scoresList.clear();
+                        for (DataSnapshot doc : snapshot.getChildren()) {
+                            Score score = doc.getValue(Score.class);
+                            if (score != null) scoresList.add(score);
+                        }
+                        // הופכים את הרשימה כדי שהכי הרבה ניצחונות יהיה למעלה (מקום ראשון)
+                        Collections.reverse(scoresList);
+                        adapter.notifyDataSetChanged();
+                    }
+
+                    @Override
+                    public void onCancelled(@NonNull DatabaseError error) {
+                        showError();
+                    }
+                });
+    }
+
+    private void showError() {
+        Toast.makeText(LeaderboardActivity.this, "Failed to load scores", Toast.LENGTH_SHORT).show();
     }
 }
