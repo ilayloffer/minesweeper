@@ -63,7 +63,8 @@ public class GameActivity extends AppCompatActivity implements GameView {
         overlayTitle = findViewById(R.id.overlayTitle);
         btnHome = findViewById(R.id.btnHome);
         Button btnOpenChat = findViewById(R.id.btnOpenChat);
-
+        // 4. יצירת הלוח החזותי
+        createBoardUI();
         // 3. הגדרת צ'אט והקונטרולר לפי סוג המשחק
         if (isOnline) {
             // הנתיב: games -> [room id] -> chat
@@ -79,11 +80,8 @@ public class GameActivity extends AppCompatActivity implements GameView {
             btnOpenChat.setVisibility(View.GONE);
 
             // אתחול קונטרולר אופליין
-            controller = new OfflineGameController(this, size);
+            controller = new OfflineGameController(this, size, currentUser);
         }
-
-        // 4. יצירת הלוח החזותי
-        createBoardUI();
 
         // כפתור חזרה לתפריט הראשי בסיום המשחק
         btnHome.setOnClickListener(v -> finish());

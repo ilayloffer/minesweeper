@@ -86,14 +86,15 @@ public class MainActivity extends AppCompatActivity {
         mAuth = FirebaseAuth.getInstance();
         prefs = getSharedPreferences("MinePrefs", MODE_PRIVATE);
 
-        // כפתור Leaderboard
+// כפתור Leaderboard - הוספנו לו את השם של השחקן!
         Button btnLeaderboard = findViewById(R.id.btnLeaderboard);
         btnLeaderboard.setOnClickListener(v -> {
             Intent intent = new Intent(MainActivity.this, LeaderboardActivity.class);
+            intent.putExtra("currentUser", getPlayerName());
             startActivity(intent);
         });
 
-        // View bindings (תוקן: R.id.btnOnlineMatch)
+        // View bindings
         difficultySeek = findViewById(R.id.difficultySeek);
         difficultyLabel = findViewById(R.id.difficultyLabel);
         tvWelcome = findViewById(R.id.tvWelcome);
@@ -127,6 +128,8 @@ public class MainActivity extends AppCompatActivity {
             Intent intent = new Intent(MainActivity.this, GameActivity.class);
             intent.putExtra("size", size);
             intent.putExtra("isOnline", false);
+            // **השורה החדשה והחשובה שמעבירה את השם!**
+            intent.putExtra("currentUser", getPlayerName());
             startActivity(intent);
         });
 
@@ -152,6 +155,29 @@ public class MainActivity extends AppCompatActivity {
         } catch (Exception e) {
             Log.e("MainActivity", "Receiver error: " + e.getMessage());
         }
+    }
+
+    // --- חילוץ שם השחקן ---
+
+    // פונקציה ששולפת את שם השחקן בצורה הכי מדויקת שיש
+    private String getPlayerName() {
+        FirebaseUser currentUser = mAuth.getCurrentUser();
+        String name = "Guest";
+
+        if (currentUser != null) {
+            String fbName = currentUser.getDisplayName();
+            if (fbName != null && !fbName.isEmpty()) {
+                name = fbName;
+            } else if (getIntent().getStringExtra("USERNAME") != null) {
+                name = getIntent().getStringExtra("USERNAME");
+            } else if (currentUser.getEmail() != null) {
+                // אם אין לו שם מוגדר בפיירבייס, ניקח את החלק שלפני ה-@ באימייל שלו
+                name = currentUser.getEmail().split("@")[0];
+            }
+        } else if (getIntent().getStringExtra("USERNAME") != null) {
+            name = getIntent().getStringExtra("USERNAME");
+        }
+        return name;
     }
 
     // --- Multiplayer Matchmaking Methods ---
@@ -187,14 +213,26 @@ public class MainActivity extends AppCompatActivity {
         builder.setPositiveButton("Start Game", (dialog, which) -> {
             Intent intent = new Intent(MainActivity.this, GameActivity.class);
             intent.putExtra("isOnline", true);
-            intent.putExtra("size", 10); // באונליין מקובע ל-10
+            intent.putExtra("size", 10);
             intent.putExtra("gameId", roomId);
-            intent.putExtra("currentUser", "player1");
-            intent.putExtra("otherPlayer", "player2");
+            // התיקון: שולחים את השם האמיתי של השחקן שיצר את החדר
+            intent.putExtra("currentUser", getPlayerName());
+            intent.putExtra("otherPlayer", "Opponent");
             startActivity(intent);
         });
 
         builder.show();
+    }
+
+    private void startGameAsJoiner(String roomId) {
+        Intent intent = new Intent(MainActivity.this, GameActivity.class);
+        intent.putExtra("isOnline", true);
+        intent.putExtra("size", 10);
+        intent.putExtra("gameId", roomId);
+        // התיקון: שולחים את השם האמיתי של השחקן שהצטרף לחדר
+        intent.putExtra("currentUser", getPlayerName());
+        intent.putExtra("otherPlayer", "Opponent");
+        startActivity(intent);
     }
 
     private void showJoinDialog() {
@@ -237,15 +275,6 @@ public class MainActivity extends AppCompatActivity {
         qrScannerLauncher.launch(options);
     }
 
-    private void startGameAsJoiner(String roomId) {
-        Intent intent = new Intent(MainActivity.this, GameActivity.class);
-        intent.putExtra("isOnline", true);
-        intent.putExtra("size", 10); // באונליין מקובע ל-10
-        intent.putExtra("gameId", roomId);
-        intent.putExtra("currentUser", "player2");
-        intent.putExtra("otherPlayer", "player1");
-        startActivity(intent);
-    }
 
     // --- Utility Methods ---
 
@@ -257,21 +286,8 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void updateWelcomeMessage() {
-        FirebaseUser currentUser = mAuth.getCurrentUser();
-        String displayInternal;
-
-        if (currentUser != null) {
-            String fbName = currentUser.getDisplayName();
-            if (fbName != null && !fbName.isEmpty()) {
-                displayInternal = fbName;
-            } else {
-                displayInternal = getIntent().getStringExtra("USERNAME");
-            }
-        } else {
-            displayInternal = "Guest";
-        }
-
-        if (displayInternal == null) displayInternal = "Player";
+        // עכשיו גם פה אנחנו משתמשים בפונקציה המסודרת שיצרנו
+        String displayInternal = getPlayerName();
         tvWelcome.setText("Welcome, " + displayInternal + "!");
     }
 

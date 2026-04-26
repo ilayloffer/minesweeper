@@ -9,7 +9,7 @@
     <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="🏆 Top Players 🏆"
+        android:text="🏆 Top 10 Players 🏆"
         android:textSize="28sp"
         android:textStyle="bold"
         android:textAlignment="center"
@@ -25,25 +25,60 @@
         android:layout_marginBottom="16dp">
 
         <RadioButton
+            android:id="@+id/rbSortOnlineWins"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Online Wins"
+            android:checked="true"
+            android:textSize="14sp"
+            android:layout_marginEnd="8dp"/>
+
+        <RadioButton
+            android:id="@+id/rbSortOfflineWins"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Offline Wins"
+            android:textSize="14sp"
+            android:layout_marginEnd="8dp"/>
+
+        <RadioButton
             android:id="@+id/rbSortTime"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="Fastest Time"
-            android:checked="true"
-            android:textSize="16sp"
-            android:layout_marginEnd="16dp"/>
-
-        <RadioButton
-            android:id="@+id/rbSortWins"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Most Wins"
-            android:textSize="16sp"/>
+            android:textSize="14sp"/>
     </RadioGroup>
 
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/recyclerViewLeaderboard"
         android:layout_width="match_parent"
-        android:layout_height="match_parent" />
+        android:layout_height="0dp"
+        android:layout_weight="1" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:background="#E0E0E0"
+        android:padding="12dp"
+        android:layout_marginTop="8dp"
+        android:elevation="4dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="⭐ My Rank ⭐"
+            android:textStyle="bold"
+            android:textColor="#333333"
+            android:layout_marginBottom="4dp"/>
+
+        <TextView
+            android:id="@+id/tvMyRankDetails"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Loading your rank..."
+            android:textSize="16sp"
+            android:textColor="#555555"/>
+    </LinearLayout>
 
 </LinearLayout>

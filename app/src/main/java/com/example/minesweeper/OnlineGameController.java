@@ -12,7 +12,10 @@ public class OnlineGameController implements GameController {
     private final GameView view;
     private final int size;
     private DatabaseReference gameRef;
-    private ValueEventListener listener;
+
+    // הפרדנו את המאזינים כדי שהצ'אט לא יפריע למהלכים
+    private ValueEventListener stateListener;
+    private ValueEventListener boardListener;
 
     private final String gameId;
     private final String currentUser;
@@ -47,17 +50,75 @@ public class OnlineGameController implements GameController {
             createNewGame();
         }
 
-        listener = gameRef.addValueEventListener(new ValueEventListener() {
+        // מאזין למצב המשחק (תור, סטרייקים, ומוודא שהיה שינוי אמיתי במשחק)
+        stateListener = gameRef.addValueEventListener(new ValueEventListener() {
             @Override
             public void onDataChange(DataSnapshot snapshot) {
-                if (!snapshot.exists()) return;
-                parseAndUpdateBoard(snapshot);
+                if (!snapshot.exists() || isGameOver) return;
+
+                // מושך רק את הנתונים שאכפת לנו מהם
+                Long myMisses = snapshot.child(currentUser + "_misses").getValue(Long.class);
+                Long otherMisses = snapshot.child(otherPlayer + "_misses").getValue(Long.class);
+                String newTurn = snapshot.child("playerTurn").getValue(String.class);
+                Long lastUpdate = snapshot.child("lastMoveTimestamp").getValue(Long.class);
+
+                if (myMisses != null) myCurrentMisses = myMisses;
+
+                // בדיקת ניצחון/הפסד
+                if (myMisses != null && myMisses >= 3) {
+                    endGame(false);
+                    return;
+                }
+                if (otherMisses != null && otherMisses >= 3) {
+                    endGame(true);
+                    return;
+                }
+
+                // בדיקה אם באמת התור עבר או שהמשחק התחיל
+                if (newTurn != null && (!newTurn.equals(currentTurn) || currentTurn == null)) {
+                    currentTurn = newTurn;
+                    boolean isMyTurn = currentUser.equals(currentTurn);
+                    view.setBoardEnabled(isMyTurn);
+                    startTurnTimer(isMyTurn);
+                }
             }
 
             @Override
             public void onCancelled(DatabaseError error) {
                 view.showMessage("Connection error");
             }
+        });
+
+        // מאזין ללוח בנפרד
+        boardListener = gameRef.child("board").addValueEventListener(new ValueEventListener() {
+            @Override
+            public void onDataChange(DataSnapshot boardSnap) {
+                if (!boardSnap.exists() || isGameOver) return;
+
+                for (int i = 0; i < size; i++) {
+                    for (int j = 0; j < size; j++) {
+                        String key = i + "_" + j;
+                        DataSnapshot cellSnap = boardSnap.child(key);
+
+                        if (cellSnap.exists()) {
+                            Cell cell = new Cell();
+                            cell.setRevealed(Boolean.TRUE.equals(cellSnap.child("revealed").getValue(Boolean.class)));
+                            cell.setHasMine(Boolean.TRUE.equals(cellSnap.child("hasMine").getValue(Boolean.class)));
+
+                            Long n = cellSnap.child("neighborMines").getValue(Long.class);
+                            cell.setNeighborMines(n == null ? 0 : n.intValue());
+
+                            cell.setFlagged(Boolean.TRUE.equals(cellSnap.child("flagged").getValue(Boolean.class)));
+
+                            localBoard[i][j] = cell;
+                            view.updateCell(i, j, cell);
+                        }
+                    }
+                }
+            }
+
+            @Override
+            public void onCancelled(DatabaseError error) {}
         });
     }
 
@@ -91,59 +152,9 @@ public class OnlineGameController implements GameController {
         game.put("status", "ACTIVE");
         game.put(currentUser + "_misses", 0);
         game.put(otherPlayer + "_misses", 0);
+        game.put("lastMoveTimestamp", ServerValue.TIMESTAMP); // חותמת זמן התחלתית
 
         gameRef.setValue(game);
-    }
-
-    @SuppressWarnings("unchecked")
-    private void parseAndUpdateBoard(DataSnapshot doc) {
-        if (isGameOver) return;
-
-        Long myMisses = doc.child(currentUser + "_misses").getValue(Long.class);
-        Long otherMisses = doc.child(otherPlayer + "_misses").getValue(Long.class);
-
-        if (myMisses != null) {
-            myCurrentMisses = myMisses;
-        }
-
-        // בדיקת ניצחון/הפסד (בין אם מ-3 סטרייקים של חוסר פעילות, ובין אם מלחיצה על מוקש)
-        if (myMisses != null && myMisses >= 3) {
-            endGame(false);
-            return;
-        }
-        if (otherMisses != null && otherMisses >= 3) {
-            endGame(true);
-            return;
-        }
-
-        currentTurn = doc.child("playerTurn").getValue(String.class);
-        boolean isMyTurn = currentUser.equals(currentTurn);
-        view.setBoardEnabled(isMyTurn);
-
-        DataSnapshot boardSnap = doc.child("board");
-
-        for (int i = 0; i < size; i++) {
-            for (int j = 0; j < size; j++) {
-                String key = i + "_" + j;
-                DataSnapshot cellSnap = boardSnap.child(key);
-
-                if (cellSnap.exists()) {
-                    Cell cell = new Cell();
-                    cell.setRevealed(Boolean.TRUE.equals(cellSnap.child("revealed").getValue(Boolean.class)));
-                    cell.setHasMine(Boolean.TRUE.equals(cellSnap.child("hasMine").getValue(Boolean.class)));
-
-                    Long n = cellSnap.child("neighborMines").getValue(Long.class);
-                    cell.setNeighborMines(n == null ? 0 : n.intValue());
-
-                    cell.setFlagged(Boolean.TRUE.equals(cellSnap.child("flagged").getValue(Boolean.class)));
-
-                    localBoard[i][j] = cell;
-                    view.updateCell(i, j, cell);
-                }
-            }
-        }
-
-        startTurnTimer(isMyTurn);
     }
 
     private void startTurnTimer(boolean isMyTurn) {
@@ -172,38 +183,42 @@ public class OnlineGameController implements GameController {
     private void handleTimeout(boolean isMyTurn) {
         if (isGameOver || !isMyTurn) return;
 
-        // הודעה לשחקן שלא הספיק לשחק
         view.showMessage("STRIKE! You missed your turn ⏳");
 
-        gameRef.addListenerForSingleValueEvent(new ValueEventListener() {
-            @Override
-            public void onDataChange(DataSnapshot snapshot) {
-                if (!snapshot.exists()) return;
+        long newMisses = myCurrentMisses + 1;
 
-                Long misses = snapshot.child(currentUser + "_misses").getValue(Long.class);
-                if (misses == null) misses = 0L;
+        Map<String, Object> updates = new HashMap<>();
+        updates.put(currentUser + "_misses", newMisses);
+        updates.put("playerTurn", otherPlayer);
+        updates.put("lastMoveTimestamp", ServerValue.TIMESTAMP);
 
-                long newMisses = misses + 1; // הוספת STRIKE
-
-                Map<String, Object> updates = new HashMap<>();
-                updates.put(currentUser + "_misses", newMisses);
-                updates.put("playerTurn", otherPlayer);
-
-                gameRef.updateChildren(updates);
-            }
-
-            @Override
-            public void onCancelled(DatabaseError error) {
-                view.showMessage("Timeout error");
-            }
-        });
+        gameRef.updateChildren(updates);
     }
 
     private void endGame(boolean didIWin) {
         isGameOver = true;
         if (turnTimer != null) turnTimer.cancel();
+
+        // עצירת ההאזנה ללוח ולמצב, כדי שלא ירענן בטעות כשהמשחק נגמר
+        if (stateListener != null) gameRef.removeEventListener(stateListener);
+        if (boardListener != null) gameRef.child("board").removeEventListener(boardListener);
+
         view.showGameOver(didIWin);
         view.updateStatus(didIWin ? "You Won! 🎉" : "You Lost! 💥");
+
+        if (didIWin && currentUser != null && !currentUser.equals("Guest")) {
+            DatabaseReference userRef = FirebaseDatabase.getInstance().getReference("leaderboard").child(currentUser);
+            userRef.child("onlineWins").addListenerForSingleValueEvent(new ValueEventListener() {
+                @Override
+                public void onDataChange(DataSnapshot snapshot) {
+                    Long currentWins = snapshot.getValue(Long.class);
+                    if (currentWins == null) currentWins = 0L;
+                    userRef.child("onlineWins").setValue(currentWins + 1);
+                }
+                @Override
+                public void onCancelled(DatabaseError error) {}
+            });
+        }
     }
 
     @Override
@@ -221,46 +236,37 @@ public class OnlineGameController implements GameController {
 
         if (turnTimer != null) turnTimer.cancel();
 
-        // --- כאן נמצא השינוי: אם לוחצים על מוקש ---
+        Map<String, Object> updates = new HashMap<>();
+
         if (cell.getHasMine()) {
-            cell.setRevealed(true);
-
-            gameRef.child("board")
-                    .child(r + "_" + c)
-                    .child("revealed")
-                    .setValue(true);
-
-            // בום! הפסד אוטומטי מיידי
-            // מעדכנים את הפסילות ל-3 (או יותר) כדי שהמשחק ייגמר מיד לשני השחקנים
-            gameRef.child(currentUser + "_misses").setValue(3);
-
+            updates.put("board/" + r + "_" + c + "/revealed", true);
+            updates.put(currentUser + "_misses", 3);
+            updates.put("lastMoveTimestamp", ServerValue.TIMESTAMP);
+            gameRef.updateChildren(updates);
             return;
         }
 
-        // פתיחת שטח רגילה
-        floodFill(r, c);
+        floodFill(r, c, updates);
 
-        // סיום מהלך רגיל (מוצלח) → איפוס הסטרייקים ומעבר תור
-        gameRef.child("playerTurn").setValue(otherPlayer);
-        gameRef.child(currentUser + "_misses").setValue(0);
+        updates.put("playerTurn", otherPlayer);
+        updates.put(currentUser + "_misses", 0);
+        updates.put("lastMoveTimestamp", ServerValue.TIMESTAMP);
+
+        gameRef.updateChildren(updates);
     }
 
-    private void floodFill(int r, int c) {
+    private void floodFill(int r, int c, Map<String, Object> updates) {
         if (r < 0 || c < 0 || r >= size || c >= size) return;
 
         Cell cell = localBoard[r][c];
         if (cell.isRevealed() || cell.isFlagged()) return;
 
         cell.setRevealed(true);
-
-        gameRef.child("board")
-                .child(r + "_" + c)
-                .child("revealed")
-                .setValue(true);
+        updates.put("board/" + r + "_" + c + "/revealed", true);
 
         if (cell.getNeighborMines() == 0 && !cell.getHasMine()) {
             for (int k = 0; k < 8; k++) {
-                floodFill(r + dx[k], c + dy[k]);
+                floodFill(r + dx[k], c + dy[k], updates);
             }
         }
     }
@@ -271,16 +277,18 @@ public class OnlineGameController implements GameController {
 
         boolean currentFlag = localBoard[r][c].isFlagged();
 
-        gameRef.child("board")
-                .child(r + "_" + c)
-                .child("flagged")
-                .setValue(!currentFlag);
+        Map<String, Object> updates = new HashMap<>();
+        updates.put("board/" + r + "_" + c + "/flagged", !currentFlag);
+        updates.put("lastMoveTimestamp", ServerValue.TIMESTAMP);
+
+        gameRef.updateChildren(updates);
     }
 
     @Override
     public void onDestroy() {
-        if (listener != null && gameRef != null) {
-            gameRef.removeEventListener(listener);
+        if (gameRef != null) {
+            if (stateListener != null) gameRef.removeEventListener(stateListener);
+            if (boardListener != null) gameRef.child("board").removeEventListener(boardListener);
         }
 
         if (turnTimer != null) {

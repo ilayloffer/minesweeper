@@ -4,37 +4,38 @@ import com.google.firebase.database.DatabaseReference;
 import com.google.firebase.database.FirebaseDatabase;
 
 public class Score {
-    private String player;
-    private int time;
-    private int difficulty;
-    private int wins; // <-- הוספנו ניצחונות
+    private String playerName;
+    private int onlineWins = 0;
+    private int offlineWins = 0;
+    private int bestOfflineTime = 0;
 
-    public Score() {} // Needed for Firebase
+    // קונסטרקטור ריק - חובה בשביל פיירבייס
+    public Score() {}
 
-    public Score(String player, int time, int difficulty, int wins) {
-        this.player = player;
-        this.time = time;
-        this.difficulty = difficulty;
-        this.wins = wins;
+    public Score(String playerName, int onlineWins, int offlineWins, int bestOfflineTime) {
+        this.playerName = playerName;
+        this.onlineWins = onlineWins;
+        this.offlineWins = offlineWins;
+        this.bestOfflineTime = bestOfflineTime;
     }
 
-    public String getPlayer() { return player; }
-    public void setPlayer(String player) { this.player = player; }
+    public String getPlayerName() { return playerName; }
+    public void setPlayerName(String playerName) { this.playerName = playerName; }
 
-    public int getTime() { return time; }
-    public void setTime(int time) { this.time = time; }
+    public int getOnlineWins() { return onlineWins; }
+    public void setOnlineWins(int onlineWins) { this.onlineWins = onlineWins; }
 
-    public int getDifficulty() { return difficulty; }
-    public void setDifficulty(int difficulty) { this.difficulty = difficulty; }
+    public int getOfflineWins() { return offlineWins; }
+    public void setOfflineWins(int offlineWins) { this.offlineWins = offlineWins; }
 
-    public int getWins() { return wins; }
-    public void setWins(int wins) { this.wins = wins; }
+    public int getBestOfflineTime() { return bestOfflineTime; }
+    public void setBestOfflineTime(int bestOfflineTime) { this.bestOfflineTime = bestOfflineTime; }
 
+    // פונקציית שמירה מעודכנת ששומרת תחת שם השחקן (ולא תחת מפתח אקראי)
     public void saveToLeaderboard() {
-        DatabaseReference database = FirebaseDatabase.getInstance().getReference("leaderboard");
-        String scoreId = database.push().getKey();
-        if (scoreId != null) {
-            database.child(scoreId).setValue(this);
+        if (playerName != null && !playerName.isEmpty()) {
+            DatabaseReference database = FirebaseDatabase.getInstance().getReference("leaderboard");
+            database.child(playerName).setValue(this);
         }
     }
 }

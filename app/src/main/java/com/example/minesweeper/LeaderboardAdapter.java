@@ -24,7 +24,22 @@ public class LeaderboardAdapter extends RecyclerView.Adapter<LeaderboardAdapter.
         return new ScoreViewHolder(view);
     }
 
+    @Override
+    public void onBindViewHolder(@NonNull ScoreViewHolder holder, int position) {
+        Score currentScore = scoresList.get(position);
 
+        holder.tvRank.setText(String.valueOf(position + 1));
+        holder.tvName.setText(currentScore.getPlayerName());
+
+        // עיצוב הנתונים החדשים
+        String timeDisplay = currentScore.getBestOfflineTime() == 0 ? "N/A" : currentScore.getBestOfflineTime() + "s";
+
+        String details = "Online Wins: " + currentScore.getOnlineWins() +
+                " | Offline Wins: " + currentScore.getOfflineWins() +
+                " | Best Time: " + timeDisplay;
+
+        holder.tvDetails.setText(details);
+    }
 
     @Override
     public int getItemCount() {
@@ -40,21 +55,5 @@ public class LeaderboardAdapter extends RecyclerView.Adapter<LeaderboardAdapter.
             tvName = itemView.findViewById(R.id.tvName);
             tvDetails = itemView.findViewById(R.id.tvDetails);
         }
-    }
-    // בתוך המתודה onBindViewHolder בקובץ LeaderboardAdapter.java:
-
-    @Override
-    public void onBindViewHolder(@NonNull ScoreViewHolder holder, int position) {
-        Score currentScore = scoresList.get(position);
-
-        holder.tvRank.setText(String.valueOf(position + 1));
-        holder.tvName.setText(currentScore.getPlayer());
-
-        // מציג גם זמן, גם ניצחונות וגם רמת קושי
-        String details = "Time: " + currentScore.getTime() + "s"
-                + " | Wins: " + currentScore.getWins()
-                + " | Diff: " + currentScore.getDifficulty();
-
-        holder.tvDetails.setText(details);
     }
 }

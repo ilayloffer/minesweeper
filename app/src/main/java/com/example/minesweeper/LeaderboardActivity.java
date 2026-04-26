@@ -2,6 +2,7 @@ package com.example.minesweeper;
 
 import android.os.Bundle;
 import android.widget.RadioGroup;
+import android.widget.TextView;
 import android.widget.Toast;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
@@ -22,12 +23,22 @@ public class LeaderboardActivity extends AppCompatActivity {
     private LeaderboardAdapter adapter;
     private List<Score> scoresList;
     private DatabaseReference leaderboardRef;
-    private ValueEventListener currentListener; // שומר את המאזין הנוכחי כדי לבטל אותו כשמחליפים מיון
+    private ValueEventListener currentListener;
+
+    // משתנים חדשים
+    private String currentUser;
+    private TextView tvMyRankDetails;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_leaderboard);
+
+        // מושך את שם השחקן מהמסך הראשי
+        currentUser = getIntent().getStringExtra("currentUser");
+        if (currentUser == null) currentUser = "Guest";
+
+        tvMyRankDetails = findViewById(R.id.tvMyRankDetails);
 
         recyclerView = findViewById(R.id.recyclerViewLeaderboard);
         recyclerView.setLayoutManager(new LinearLayoutManager(this));
@@ -38,73 +49,86 @@ public class LeaderboardActivity extends AppCompatActivity {
 
         leaderboardRef = FirebaseDatabase.getInstance().getReference("leaderboard");
 
-        // מאזין לכפתורי הבחירה
         RadioGroup rgSortOptions = findViewById(R.id.rgSortOptions);
         rgSortOptions.setOnCheckedChangeListener((group, checkedId) -> {
-            if (checkedId == R.id.rbSortTime) {
-                loadDataByTime();
-            } else if (checkedId == R.id.rbSortWins) {
-                loadDataByWins();
+            if (checkedId == R.id.rbSortOnlineWins) {
+                loadData("onlineWins", false);
+            } else if (checkedId == R.id.rbSortOfflineWins) {
+                loadData("offlineWins", false);
+            } else if (checkedId == R.id.rbSortTime) {
+                loadData("bestOfflineTime", true);
             }
         });
 
-        // טעינה ראשונית - לפי זמן
-        loadDataByTime();
+        // טעינה ראשונית - לפי ניצחונות אונליין
+        loadData("onlineWins", false);
     }
 
-    private void loadDataByTime() {
+    private void loadData(String orderByField, boolean isAscending) {
         if (currentListener != null) {
             leaderboardRef.removeEventListener(currentListener);
         }
 
-        // מיון לפי זמן - limitToFirst מביא את הזמנים הכי נמוכים קודם
-        currentListener = leaderboardRef.orderByChild("time").limitToFirst(50)
+        // עכשיו מושכים הכל (בלי limit) כדי שנוכל לחשב את המיקום האמיתי של השחקן שלנו
+        currentListener = leaderboardRef.orderByChild(orderByField)
                 .addValueEventListener(new ValueEventListener() {
                     @Override
                     public void onDataChange(@NonNull DataSnapshot snapshot) {
-                        scoresList.clear();
+                        List<Score> fullList = new ArrayList<>();
+
                         for (DataSnapshot doc : snapshot.getChildren()) {
                             Score score = doc.getValue(Score.class);
-                            if (score != null) scoresList.add(score);
+                            if (score != null) {
+                                score.setPlayerName(doc.getKey());
+
+                                // מתעלם מזמנים של 0
+                                if (orderByField.equals("bestOfflineTime") && score.getBestOfflineTime() == 0) {
+                                    continue;
+                                }
+                                fullList.add(score);
+                            }
                         }
+
+                        // פיירבייס תמיד מביא סדר עולה. אם צריך הכי גבוה למעלה, נהפוך:
+                        if (!isAscending) {
+                            Collections.reverse(fullList);
+                        }
+
+                        // --- שלב 1: חיפוש השחקן שלנו ---
+                        int myRank = -1;
+                        Score myScore = null;
+                        for (int i = 0; i < fullList.size(); i++) {
+                            if (fullList.get(i).getPlayerName().equals(currentUser)) {
+                                myRank = i + 1; // המיקום הוא האינדקס + 1
+                                myScore = fullList.get(i);
+                                break;
+                            }
+                        }
+
+                        // מעדכן את הטקסט למטה
+                        if (myScore != null) {
+                            String timeDisplay = myScore.getBestOfflineTime() == 0 ? "N/A" : myScore.getBestOfflineTime() + "s";
+                            String myStats = "Place: #" + myRank + " | " + currentUser + "\n" +
+                                    "Online: " + myScore.getOnlineWins() + " | Offline: " + myScore.getOfflineWins() + " | Time: " + timeDisplay;
+                            tvMyRankDetails.setText(myStats);
+                        } else {
+                            tvMyRankDetails.setText(currentUser + " - No records in this category yet.");
+                        }
+
+                        // --- שלב 2: משאירים רק את 10 הראשונים להצגה ---
+                        scoresList.clear();
+                        int limit = Math.min(fullList.size(), 10);
+                        for (int i = 0; i < limit; i++) {
+                            scoresList.add(fullList.get(i));
+                        }
+
                         adapter.notifyDataSetChanged();
                     }
 
                     @Override
                     public void onCancelled(@NonNull DatabaseError error) {
-                        showError();
+                        Toast.makeText(LeaderboardActivity.this, "Failed to load scores", Toast.LENGTH_SHORT).show();
                     }
                 });
-    }
-
-    private void loadDataByWins() {
-        if (currentListener != null) {
-            leaderboardRef.removeEventListener(currentListener);
-        }
-
-        // מיון לפי ניצחונות - limitToLast מביא את הכי גבוהים, אבל בסדר עולה
-        currentListener = leaderboardRef.orderByChild("wins").limitToLast(50)
-                .addValueEventListener(new ValueEventListener() {
-                    @Override
-                    public void onDataChange(@NonNull DataSnapshot snapshot) {
-                        scoresList.clear();
-                        for (DataSnapshot doc : snapshot.getChildren()) {
-                            Score score = doc.getValue(Score.class);
-                            if (score != null) scoresList.add(score);
-                        }
-                        // הופכים את הרשימה כדי שהכי הרבה ניצחונות יהיה למעלה (מקום ראשון)
-                        Collections.reverse(scoresList);
-                        adapter.notifyDataSetChanged();
-                    }
-
-                    @Override
-                    public void onCancelled(@NonNull DatabaseError error) {
-                        showError();
-                    }
-                });
-    }
-
-    private void showError() {
-        Toast.makeText(LeaderboardActivity.this, "Failed to load scores", Toast.LENGTH_SHORT).show();
     }
 }
