@@ -21,8 +21,8 @@ public class OnlineGameController implements GameController {
 
     private CountDownTimer turnTimer;
     private boolean isGameOver = false;
+    private long myCurrentMisses = 0;
 
-    // שמירת הלוח מקומית כדי לחשב פתיחת שטחים
     private Cell[][] localBoard;
 
     private final int[] dx = {-1, -1, -1, 0, 0, 1, 1, 1};
@@ -43,7 +43,6 @@ public class OnlineGameController implements GameController {
     }
 
     private void listenToFirebase() {
-
         if (currentUser.equals("player1")) {
             createNewGame();
         }
@@ -52,7 +51,6 @@ public class OnlineGameController implements GameController {
             @Override
             public void onDataChange(DataSnapshot snapshot) {
                 if (!snapshot.exists()) return;
-
                 parseAndUpdateBoard(snapshot);
             }
 
@@ -104,6 +102,11 @@ public class OnlineGameController implements GameController {
         Long myMisses = doc.child(currentUser + "_misses").getValue(Long.class);
         Long otherMisses = doc.child(otherPlayer + "_misses").getValue(Long.class);
 
+        if (myMisses != null) {
+            myCurrentMisses = myMisses;
+        }
+
+        // בדיקת ניצחון/הפסד (בין אם מ-3 סטרייקים של חוסר פעילות, ובין אם מלחיצה על מוקש)
         if (myMisses != null && myMisses >= 3) {
             endGame(false);
             return;
@@ -121,12 +124,10 @@ public class OnlineGameController implements GameController {
 
         for (int i = 0; i < size; i++) {
             for (int j = 0; j < size; j++) {
-
                 String key = i + "_" + j;
                 DataSnapshot cellSnap = boardSnap.child(key);
 
                 if (cellSnap.exists()) {
-
                     Cell cell = new Cell();
                     cell.setRevealed(Boolean.TRUE.equals(cellSnap.child("revealed").getValue(Boolean.class)));
                     cell.setHasMine(Boolean.TRUE.equals(cellSnap.child("hasMine").getValue(Boolean.class)));
@@ -169,21 +170,20 @@ public class OnlineGameController implements GameController {
     }
 
     private void handleTimeout(boolean isMyTurn) {
-
         if (isGameOver || !isMyTurn) return;
+
+        // הודעה לשחקן שלא הספיק לשחק
+        view.showMessage("STRIKE! You missed your turn ⏳");
 
         gameRef.addListenerForSingleValueEvent(new ValueEventListener() {
             @Override
             public void onDataChange(DataSnapshot snapshot) {
-
                 if (!snapshot.exists()) return;
 
-                Long misses = snapshot.child(currentUser + "_misses")
-                        .getValue(Long.class);
-
+                Long misses = snapshot.child(currentUser + "_misses").getValue(Long.class);
                 if (misses == null) misses = 0L;
 
-                long newMisses = misses + 1;
+                long newMisses = misses + 1; // הוספת STRIKE
 
                 Map<String, Object> updates = new HashMap<>();
                 updates.put(currentUser + "_misses", newMisses);
@@ -203,13 +203,11 @@ public class OnlineGameController implements GameController {
         isGameOver = true;
         if (turnTimer != null) turnTimer.cancel();
         view.showGameOver(didIWin);
-        view.updateStatus(didIWin ? "You Won!" : "You Lost!");
+        view.updateStatus(didIWin ? "You Won! 🎉" : "You Lost! 💥");
     }
 
     @Override
     public void onCellClicked(int r, int c) {
-
-        // 1. בדיקות בסיס
         if (isGameOver) return;
 
         if (!currentUser.equals(currentTurn)) {
@@ -218,14 +216,13 @@ public class OnlineGameController implements GameController {
         }
 
         if (localBoard[r][c] == null) return;
-
         Cell cell = localBoard[r][c];
-
         if (cell.isRevealed() || cell.isFlagged()) return;
 
-        // 2. אם לחצו על מוקש → אפשר להרחיב בעתיד
-        if (cell.getHasMine()) {
+        if (turnTimer != null) turnTimer.cancel();
 
+        // --- כאן נמצא השינוי: אם לוחצים על מוקש ---
+        if (cell.getHasMine()) {
             cell.setRevealed(true);
 
             gameRef.child("board")
@@ -233,36 +230,25 @@ public class OnlineGameController implements GameController {
                     .child("revealed")
                     .setValue(true);
 
-            // עדכון טעות + מעבר תור
-            gameRef.child(currentUser + "_misses").setValue(
-                    getLocalMissesSnapshot() + 1
-            );
-
-            gameRef.child("playerTurn").setValue(otherPlayer);
+            // בום! הפסד אוטומטי מיידי
+            // מעדכנים את הפסילות ל-3 (או יותר) כדי שהמשחק ייגמר מיד לשני השחקנים
+            gameRef.child(currentUser + "_misses").setValue(3);
 
             return;
         }
 
-        // 3. פתיחת שטח רגילה
+        // פתיחת שטח רגילה
         floodFill(r, c);
 
-        // 4. סיום מהלך → מעבר תור
+        // סיום מהלך רגיל (מוצלח) → איפוס הסטרייקים ומעבר תור
         gameRef.child("playerTurn").setValue(otherPlayer);
         gameRef.child(currentUser + "_misses").setValue(0);
     }
 
-    private long getLocalMissesSnapshot() {
-        // fallback פשוט למקרה שאין לך שמירה מקומית
-        return 0;
-    }
-
-    // הפונקציה שפותחת משבצות ריקות מסביב (רקורסיה)
     private void floodFill(int r, int c) {
-
         if (r < 0 || c < 0 || r >= size || c >= size) return;
 
         Cell cell = localBoard[r][c];
-
         if (cell.isRevealed() || cell.isFlagged()) return;
 
         cell.setRevealed(true);
@@ -273,7 +259,6 @@ public class OnlineGameController implements GameController {
                 .setValue(true);
 
         if (cell.getNeighborMines() == 0 && !cell.getHasMine()) {
-
             for (int k = 0; k < 8; k++) {
                 floodFill(r + dx[k], c + dy[k]);
             }
@@ -282,7 +267,6 @@ public class OnlineGameController implements GameController {
 
     @Override
     public void onCellLongClicked(int r, int c) {
-
         if (!currentUser.equals(currentTurn) || isGameOver) return;
 
         boolean currentFlag = localBoard[r][c].isFlagged();
@@ -295,7 +279,6 @@ public class OnlineGameController implements GameController {
 
     @Override
     public void onDestroy() {
-
         if (listener != null && gameRef != null) {
             gameRef.removeEventListener(listener);
         }
