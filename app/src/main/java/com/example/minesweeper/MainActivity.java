@@ -22,15 +22,17 @@ import android.widget.Toast;
 
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
+import androidx.annotation.NonNull;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseUser;
-
-// ספריות הברקוד
+import com.google.firebase.database.DataSnapshot;
+import com.google.firebase.database.DatabaseError;
 import com.google.firebase.database.DatabaseReference;
 import com.google.firebase.database.FirebaseDatabase;
+import com.google.firebase.database.ValueEventListener;
 import com.journeyapps.barcodescanner.BarcodeEncoder;
 import com.journeyapps.barcodescanner.ScanContract;
 import com.journeyapps.barcodescanner.ScanOptions;
@@ -71,11 +73,7 @@ public class MainActivity extends AppCompatActivity {
             new ScanContract(),
             result -> {
                 if (result.getContents() != null) {
-                    String scannedRoomId = result.getContents();
-                    Toast.makeText(this, getPlayerName() + " Joined Room: " + scannedRoomId, Toast.LENGTH_SHORT).show();
-                    Log.d("Rinat","Joined Room: " + scannedRoomId);
-                    Log.d("Rinat",getPlayerName());
-                    startGameAsJoiner(scannedRoomId);
+                    checkRoomAndJoin(result.getContents()); // בדיקה לפני הצטרפות
                 } else {
                     Toast.makeText(this, "Scan cancelled", Toast.LENGTH_SHORT).show();
                 }
@@ -92,7 +90,7 @@ public class MainActivity extends AppCompatActivity {
         mAuth = FirebaseAuth.getInstance();
         prefs = getSharedPreferences("MinePrefs", MODE_PRIVATE);
 
-// כפתור Leaderboard - הוספנו לו את השם של השחקן!
+        // כפתור Leaderboard
         Button btnLeaderboard = findViewById(R.id.btnLeaderboard);
         btnLeaderboard.setOnClickListener(v -> {
             Intent intent = new Intent(MainActivity.this, LeaderboardActivity.class);
@@ -134,7 +132,6 @@ public class MainActivity extends AppCompatActivity {
             Intent intent = new Intent(MainActivity.this, GameActivity.class);
             intent.putExtra("size", size);
             intent.putExtra("isOnline", false);
-            // **השורה החדשה והחשובה שמעבירה את השם!**
             intent.putExtra("currentUser", getPlayerName());
             startActivity(intent);
         });
@@ -161,11 +158,9 @@ public class MainActivity extends AppCompatActivity {
         } catch (Exception e) {
             Log.e("MainActivity", "Receiver error: " + e.getMessage());
         }
-    }
+    } // סגירת פונקציית onCreate
 
     // --- חילוץ שם השחקן ---
-
-    // פונקציה ששולפת את שם השחקן בצורה הכי מדויקת שיש
     private String getPlayerName() {
         FirebaseUser currentUser = mAuth.getCurrentUser();
         String name = "Guest";
@@ -177,7 +172,6 @@ public class MainActivity extends AppCompatActivity {
             } else if (getIntent().getStringExtra("USERNAME") != null) {
                 name = getIntent().getStringExtra("USERNAME");
             } else if (currentUser.getEmail() != null) {
-                // אם אין לו שם מוגדר בפיירבייס, ניקח את החלק שלפני ה-@ באימייל שלו
                 name = currentUser.getEmail().split("@")[0];
             }
         } else if (getIntent().getStringExtra("USERNAME") != null) {
@@ -212,8 +206,6 @@ public class MainActivity extends AppCompatActivity {
         roomData.put("host", getPlayerName());
 
         roomRef.setValue(roomData);
-
-        // הוספת שחקן ראשון
         roomRef.child("players").child("player1").setValue(getPlayerName());
 
         ImageView qrImageView = new ImageView(this);
@@ -235,34 +227,60 @@ public class MainActivity extends AppCompatActivity {
             intent.putExtra("isOnline", true);
             intent.putExtra("size", 10);
             intent.putExtra("gameId", roomId);
-            // התיקון: שולחים את השם האמיתי של השחקן שיצר את החדר
             intent.putExtra("currentUser", getPlayerName());
-            Log.d("Rinat", "Opened by: " + getPlayerName());
             startActivity(intent);
         });
 
         builder.show();
     }
 
-    private void startGameAsJoiner(String roomId) {
+    private void checkRoomAndJoin(String roomId) {
+        DatabaseReference roomRef = FirebaseDatabase.getInstance().getReference("rooms").child(roomId);
 
+        roomRef.addListenerForSingleValueEvent(new ValueEventListener() {
+            @Override
+            public void onDataChange(@NonNull DataSnapshot snapshot) {
+                if (snapshot.exists()) {
+                    String status = snapshot.child("status").getValue(String.class);
+                    // שולפים את שם יוצר החדר (המארח) מתוך הנתונים
+                    String host = snapshot.child("host").getValue(String.class);
+                    String currentPlayerName = getPlayerName();
+
+                    if ("waiting".equals(status)) {
+                        // מוודאים שהשחקן לא מנסה להיכנס לחדר של עצמו
+                        if (currentPlayerName.equals(host)) {
+                            Toast.makeText(MainActivity.this, "You cannot play against yourself!, try offline game instead", Toast.LENGTH_SHORT).show();
+                        } else {
+                            startGameAsJoiner(roomId); // הכל תקין, אפשר להיכנס
+                        }
+                    } else {
+                        Toast.makeText(MainActivity.this, "Room is already full or playing", Toast.LENGTH_SHORT).show();
+                    }
+                } else {
+                    Toast.makeText(MainActivity.this, "Room not found! Please check the code.", Toast.LENGTH_SHORT).show();
+                }
+            }
+
+            @Override
+            public void onCancelled(@NonNull DatabaseError error) {
+                Toast.makeText(MainActivity.this, "Database error: " + error.getMessage(), Toast.LENGTH_SHORT).show();
+            }
+        });
+    }
+
+    private void startGameAsJoiner(String roomId) {
         DatabaseReference roomRef = FirebaseDatabase.getInstance()
                 .getReference("rooms")
                 .child(roomId);
 
-        // הוספת שחקן שני
         roomRef.child("players").child("player2").setValue(getPlayerName());
-
-        // שינוי סטטוס
         roomRef.child("status").setValue("playing");
 
         Intent intent = new Intent(MainActivity.this, GameActivity.class);
         intent.putExtra("isOnline", true);
         intent.putExtra("size", 10);
         intent.putExtra("gameId", roomId);
-        // התיקון: שולחים את השם האמיתי של השחקן שהצטרף לחדר
         intent.putExtra("currentUser", getPlayerName());
-        Log.d("Rinat", "Joined: " + getPlayerName());
         startActivity(intent);
     }
 
@@ -284,7 +302,7 @@ public class MainActivity extends AppCompatActivity {
         builder.setPositiveButton("Join", (dialog, which) -> {
             String code = input.getText().toString().trim();
             if (!code.isEmpty()) {
-                startGameAsJoiner(code);
+                checkRoomAndJoin(code);
             } else {
                 Toast.makeText(MainActivity.this, "Please enter a valid code", Toast.LENGTH_SHORT).show();
             }
@@ -306,7 +324,6 @@ public class MainActivity extends AppCompatActivity {
         qrScannerLauncher.launch(options);
     }
 
-
     // --- Utility Methods ---
 
     @Override
@@ -317,7 +334,6 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void updateWelcomeMessage() {
-        // עכשיו גם פה אנחנו משתמשים בפונקציה המסודרת שיצרנו
         String displayInternal = getPlayerName();
         tvWelcome.setText("Welcome, " + displayInternal + "!");
     }
@@ -333,7 +349,7 @@ public class MainActivity extends AppCompatActivity {
         try {
             unregisterReceiver(networkReceiver);
         } catch (IllegalArgumentException e) {
-            // תתעלם אם לא נרשם
+            // התעלמות אם לא נרשם
         }
     }
 

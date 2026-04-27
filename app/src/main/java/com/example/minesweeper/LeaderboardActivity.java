@@ -25,7 +25,6 @@ public class LeaderboardActivity extends AppCompatActivity {
     private DatabaseReference leaderboardRef;
     private ValueEventListener currentListener;
 
-    // משתנים חדשים
     private String currentUser;
     private TextView tvMyRankDetails;
 
@@ -34,7 +33,6 @@ public class LeaderboardActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_leaderboard);
 
-        // מושך את שם השחקן מהמסך הראשי
         currentUser = getIntent().getStringExtra("currentUser");
         if (currentUser == null) currentUser = "Guest";
 
@@ -60,7 +58,7 @@ public class LeaderboardActivity extends AppCompatActivity {
             }
         });
 
-        // טעינה ראשונית - לפי ניצחונות אונליין
+        // טעינה ראשונית
         loadData("onlineWins", false);
     }
 
@@ -69,7 +67,9 @@ public class LeaderboardActivity extends AppCompatActivity {
             leaderboardRef.removeEventListener(currentListener);
         }
 
-        // עכשיו מושכים הכל (בלי limit) כדי שנוכל לחשב את המיקום האמיתי של השחקן שלנו
+        // מעדכנים את האדפטר באיזה סנן אנחנו משתמשים עכשיו כדי שיציג את המידע הנכון
+        adapter.setCurrentFilter(orderByField);
+
         currentListener = leaderboardRef.orderByChild(orderByField)
                 .addValueEventListener(new ValueEventListener() {
                     @Override
@@ -81,41 +81,39 @@ public class LeaderboardActivity extends AppCompatActivity {
                             if (score != null) {
                                 score.setPlayerName(doc.getKey());
 
-                                // מתעלם מזמנים של 0
-                                if (orderByField.equals("bestOfflineTime") && score.getBestOfflineTime() == 0) {
-                                    continue;
-                                }
+                                // --- לוגיקת הסינון: מדלגים על שחקנים עם 0 בקטגוריה המבוקשת ---
+                                if (orderByField.equals("onlineWins") && score.getOnlineWins() == 0) continue;
+                                if (orderByField.equals("offlineWins") && score.getOfflineWins() == 0) continue;
+                                if (orderByField.equals("bestOfflineTime") && score.getBestOfflineTime() == 0) continue;
+
                                 fullList.add(score);
                             }
                         }
 
-                        // פיירבייס תמיד מביא סדר עולה. אם צריך הכי גבוה למעלה, נהפוך:
+                        // היפוך הרשימה אם צריך מהגבוה לנמוך
                         if (!isAscending) {
                             Collections.reverse(fullList);
                         }
 
-                        // --- שלב 1: חיפוש השחקן שלנו ---
                         int myRank = -1;
                         Score myScore = null;
                         for (int i = 0; i < fullList.size(); i++) {
                             if (fullList.get(i).getPlayerName().equals(currentUser)) {
-                                myRank = i + 1; // המיקום הוא האינדקס + 1
+                                myRank = i + 1;
                                 myScore = fullList.get(i);
                                 break;
                             }
                         }
 
-                        // מעדכן את הטקסט למטה
                         if (myScore != null) {
                             String timeDisplay = myScore.getBestOfflineTime() == 0 ? "N/A" : myScore.getBestOfflineTime() + "s";
                             String myStats = "Place: #" + myRank + " | " + currentUser + "\n" +
                                     "Online: " + myScore.getOnlineWins() + " | Offline: " + myScore.getOfflineWins() + " | Time: " + timeDisplay;
                             tvMyRankDetails.setText(myStats);
                         } else {
-                            tvMyRankDetails.setText(currentUser + " - No records in this category yet.");
+                            tvMyRankDetails.setText(currentUser + " - Unranked in this category.");
                         }
 
-                        // --- שלב 2: משאירים רק את 10 הראשונים להצגה ---
                         scoresList.clear();
                         int limit = Math.min(fullList.size(), 10);
                         for (int i = 0; i < limit; i++) {

@@ -11,9 +11,15 @@ import java.util.List;
 public class LeaderboardAdapter extends RecyclerView.Adapter<LeaderboardAdapter.ScoreViewHolder> {
 
     private final List<Score> scoresList;
+    private String currentFilter = "onlineWins"; // ערך דיפולטיבי
 
     public LeaderboardAdapter(List<Score> scoresList) {
         this.scoresList = scoresList;
+    }
+
+    // מתודה חדשה לעדכון סוג הסנן
+    public void setCurrentFilter(String filter) {
+        this.currentFilter = filter;
     }
 
     @NonNull
@@ -31,12 +37,20 @@ public class LeaderboardAdapter extends RecyclerView.Adapter<LeaderboardAdapter.
         holder.tvRank.setText(String.valueOf(position + 1));
         holder.tvName.setText(currentScore.getPlayerName());
 
-        // עיצוב הנתונים החדשים
-        String timeDisplay = currentScore.getBestOfflineTime() == 0 ? "N/A" : currentScore.getBestOfflineTime() + "s";
+        // הצגת הנתון הרלוונטי בלבד בהתאם לסנן שנבחר
+        String details = "";
 
-        String details = "Online Wins: " + currentScore.getOnlineWins() +
-                " | Offline Wins: " + currentScore.getOfflineWins() +
-                " | Best Time: " + timeDisplay;
+        switch (currentFilter) {
+            case "onlineWins":
+                details = "Online Wins: " + currentScore.getOnlineWins();
+                break;
+            case "offlineWins":
+                details = "Offline Wins: " + currentScore.getOfflineWins();
+                break;
+            case "bestOfflineTime":
+                details = "Best Time: " + currentScore.getBestOfflineTime() + "s";
+                break;
+        }
 
         holder.tvDetails.setText(details);
     }
