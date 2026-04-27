@@ -3,6 +3,7 @@ package com.example.minesweeper;
 import android.content.Intent;
 import android.graphics.Color;
 import android.os.Bundle;
+import android.util.Log;
 import android.view.View;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
@@ -41,20 +42,17 @@ public class GameActivity extends AppCompatActivity implements GameView {
     private Button[][] buttons;
     private int size;
     private boolean isOnline;
-    private String currentUser; // הועבר לכאן כדי שפונקציית הצ'אט תכיר אותו
-
+    DatabaseReference roomRef;
+    String currentUser;
+    String otherPlayer;
+    String roomId;
+    boolean gameStarted;
+    private boolean chatListenerAdded;
+    private ValueEventListener chatListener;
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_game);
-
-        // 1. קבלת כל הנתונים מה-Intent קודם כל!
-        Intent intent = getIntent();
-        size = intent.getIntExtra("size", 10);
-        isOnline = intent.getBooleanExtra("isOnline", false);
-        String gameId = intent.getStringExtra("gameId");
-        currentUser = intent.getStringExtra("currentUser");
-        String otherPlayer = intent.getStringExtra("otherPlayer");
 
         // 2. חיבור רכיבי ה-UI מה-XML
         statusText = findViewById(R.id.statusText);
@@ -63,33 +61,149 @@ public class GameActivity extends AppCompatActivity implements GameView {
         overlayTitle = findViewById(R.id.overlayTitle);
         btnHome = findViewById(R.id.btnHome);
         Button btnOpenChat = findViewById(R.id.btnOpenChat);
+
+        gameStarted = false;
+        chatListenerAdded = false;
+
+        // 1. קבלת כל הנתונים מה-Intent קודם כל!
+        Intent intent = getIntent();
+
+        size = intent.getIntExtra("size", 10);
+        isOnline = intent.getBooleanExtra("isOnline", false);
+        roomId = intent.getStringExtra("gameId");
+        currentUser = intent.getStringExtra("currentUser");
+
+        roomRef = FirebaseDatabase.getInstance()
+                .getReference("rooms")
+                .child(roomId);
+
+        // 2. קביעה מי אני
+        roomRef.child("players").addListenerForSingleValueEvent(new ValueEventListener() {
+            @Override
+            public void onDataChange(DataSnapshot snapshot) {
+                String p1 = snapshot.child("player1").getValue(String.class);
+                String p2 = snapshot.child("player2").getValue(String.class);
+
+                if (currentUser != null && currentUser.equals(p1)) {
+                    setupDisconnect("player1");
+                } else if (currentUser != null && currentUser.equals(p2)) {
+                    setupDisconnect("player2");
+                }
+            }
+
+            @Override
+            public void onCancelled(DatabaseError error) {}
+        });
+
+        // 3. listener למשחק
+        roomRef.addValueEventListener(new ValueEventListener() {
+            @Override
+            public void onDataChange(DataSnapshot snapshot) {
+
+                String player1 = snapshot.child("players").child("player1").getValue(String.class);
+                String player2 = snapshot.child("players").child("player2").getValue(String.class);
+
+                if (player1 == null || player2 == null) {
+                    if (gameStarted) {
+                        Toast.makeText(GameActivity.this, "Opponent left", Toast.LENGTH_SHORT).show();
+                        finish();
+                    } else {
+                        statusText.setText("Waiting for opponent...");
+                    }
+                    return;
+                }
+
+                // 🔥 קביעת היריב
+                if (currentUser != null && player1 != null && currentUser.equals(player1)) {
+                    otherPlayer = player2;
+                } else if (currentUser != null && player2 != null && currentUser.equals(player2)) {
+                    otherPlayer = player1;
+                } else {
+                    otherPlayer = null; // או טיפול חריג
+                }
+
+                // 🔥 יצירת משחק רק פעם אחת
+                ///////if (controller == null) {
+                if (!gameStarted && currentUser != null && player1 != null && player2 != null) {
+                    gameStarted = true;
+
+                    if (currentUser.equals(player1)) {
+                        otherPlayer = player2;
+                    } else {
+                        otherPlayer = player1;
+                    }
+
+                    runOnUiThread(() -> {
+                        statusText.setText("Game started vs " + otherPlayer);
+
+                        controller = new OnlineGameController(
+                                GameActivity.this,
+                                size,
+                                roomId,
+                                currentUser,
+                                otherPlayer
+                        );
+
+                        createBoardUI();
+                    });
+                }
+                }
+            /////////}
+
+            @Override
+            public void onCancelled(DatabaseError error) {}
+        });
+
+
+        Log.d("Rinat", "currentUser: " + currentUser);
+
+
         // 4. יצירת הלוח החזותי
-        createBoardUI();
+        ////////////////////////createBoardUI();
         // 3. הגדרת צ'אט והקונטרולר לפי סוג המשחק
         if (isOnline) {
-            // הנתיב: games -> [room id] -> chat
-            chatRef = FirebaseDatabase.getInstance().getReference("games").child(gameId).child("chat");
+            chatRef = FirebaseDatabase.getInstance()
+                    .getReference("games")
+                    .child(roomId)
+                    .child("chat");
 
-            btnOpenChat.setVisibility(View.VISIBLE); // נראה רק באונליין
+            btnOpenChat.setVisibility(View.VISIBLE);
             btnOpenChat.setOnClickListener(v -> showChatDialog());
 
-            // אתחול קונטרולר אונליין
-            controller = new OnlineGameController(this, size, gameId, currentUser, otherPlayer);
         } else {
-            // אם זה אופליין נסתיר את כפתור הצ'אט
             btnOpenChat.setVisibility(View.GONE);
-
-            // אתחול קונטרולר אופליין
             controller = new OfflineGameController(this, size, currentUser);
+            createBoardUI();
         }
 
         // כפתור חזרה לתפריט הראשי בסיום המשחק
         btnHome.setOnClickListener(v -> finish());
     }
 
+    /*
+    private void startGameIfReady(String p1, String p2) {
+        if (p1 != null && p2 != null) {
+            // פה תתחיל את הלוח
+            createBoardUI();
+        }
+    }
+    */
+
+    private void setupDisconnect(String playerKey) {
+        DatabaseReference playerRef = roomRef.child("players").child(playerKey);
+
+        // אם השחקן מתנתק (אינטרנט / סוגר אפליקציה)
+        playerRef.onDisconnect().removeValue();
+
+        // אפשר גם לעדכן סטטוס
+        roomRef.child("status").onDisconnect().setValue("waiting");
+    }
+
     private void createBoardUI() {
         buttons = new Button[size][size];
         boardContainer.removeAllViews();
+
+        ///////////?gameStarted = true;
 
         for (int i = 0; i < size; i++) {
             LinearLayout row = new LinearLayout(this);
@@ -178,8 +292,47 @@ public class GameActivity extends AppCompatActivity implements GameView {
     @Override
     protected void onDestroy() {
         super.onDestroy();
+
+        removePlayer();
+
+        if (chatRef != null && chatListener != null) {
+            chatRef.removeEventListener(chatListener);
+        }
+
         if (controller != null) {
             controller.onDestroy();
+        }
+
+        detachChatListener();
+    }
+
+    private void removePlayer() {
+        roomRef.child("players").addListenerForSingleValueEvent(new ValueEventListener() {
+            @Override
+            public void onDataChange(DataSnapshot snapshot) {
+                if (!snapshot.exists()) return;
+
+                String p1 = snapshot.child("player1").getValue(String.class);
+                String p2 = snapshot.child("player2").getValue(String.class);
+
+                if (currentUser != null &&currentUser.equals(p1)) {
+                    roomRef.child("players").child("player1").removeValue();
+                } else if (currentUser != null &&currentUser.equals(p2)) {
+                    roomRef.child("players").child("player2").removeValue();
+                }
+
+                roomRef.child("status").setValue("waiting");
+            }
+
+            @Override
+            public void onCancelled(DatabaseError error) {}
+        });
+    }
+
+    private void detachChatListener() {
+        if (chatRef != null && chatListener != null) {
+            chatRef.removeEventListener(chatListener);
+            chatListenerAdded = false;
         }
     }
 
@@ -199,31 +352,36 @@ public class GameActivity extends AppCompatActivity implements GameView {
         chatAdapter = new ArrayAdapter<>(this, android.R.layout.simple_list_item_1, chatMessagesList);
         listViewChat.setAdapter(chatAdapter);
 
-        // האזנה להודעות חדשות מה-Realtime Database
-        chatRef.addValueEventListener(new ValueEventListener() {
-            @Override
-            public void onDataChange(@NonNull DataSnapshot snapshot) {
-                chatMessagesList.clear();
-                for (DataSnapshot doc : snapshot.getChildren()) {
-                    ChatMessage msg = doc.getValue(ChatMessage.class);
-                    if (msg != null) {
-                        // חיבור שם השולח וההודעה למחרוזת אחת שתופיע ברשימה
-                        chatMessagesList.add(msg.getSender() + ": " + msg.getText());
+        if (isOnline && chatRef != null && !chatListenerAdded) {
+            chatListenerAdded = true;            // האזנה להודעות חדשות מה-Realtime Database
+
+            chatListener = new ValueEventListener() {
+                @Override
+                public void onDataChange(@NonNull DataSnapshot snapshot) {
+                    chatMessagesList.clear();
+                    for (DataSnapshot doc : snapshot.getChildren()) {
+                        ChatMessage msg = doc.getValue(ChatMessage.class);
+                        if (msg != null) {
+                            // חיבור שם השולח וההודעה למחרוזת אחת שתופיע ברשימה
+                            chatMessagesList.add(msg.getSender() + ": " + msg.getText());
+                        }
+                    }
+                    chatAdapter.notifyDataSetChanged();
+
+                    // גלילה אוטומטית להודעה האחרונה
+                    if (!chatMessagesList.isEmpty()) {
+                        listViewChat.setSelection(chatMessagesList.size() - 1);
                     }
                 }
-                chatAdapter.notifyDataSetChanged();
 
-                // גלילה אוטומטית להודעה האחרונה
-                if (!chatMessagesList.isEmpty()) {
-                    listViewChat.setSelection(chatMessagesList.size() - 1);
+                @Override
+                public void onCancelled(@NonNull DatabaseError error) {
+                    Toast.makeText(GameActivity.this, "Chat sync failed", Toast.LENGTH_SHORT).show();
                 }
-            }
+            };
 
-            @Override
-            public void onCancelled(@NonNull DatabaseError error) {
-                Toast.makeText(GameActivity.this, "Chat sync failed", Toast.LENGTH_SHORT).show();
-            }
-        });
+            chatRef.addValueEventListener(chatListener);
+        }
 
         // כפתור השליחה
         btnSendChat.setOnClickListener(v -> {
@@ -234,7 +392,9 @@ public class GameActivity extends AppCompatActivity implements GameView {
                 ChatMessage newMessage = new ChatMessage(senderName, text);
 
                 // דחיפת ההודעה לענף ה-chat ב-Realtime Database
-                chatRef.push().setValue(newMessage);
+                if (chatRef != null) {
+                    chatRef.push().setValue(newMessage);
+                }
 
                 // ניקוי שורת הטקסט אחרי השליחה
                 etChatMessage.setText("");

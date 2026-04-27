@@ -29,11 +29,15 @@ import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseUser;
 
 // ספריות הברקוד
+import com.google.firebase.database.DatabaseReference;
+import com.google.firebase.database.FirebaseDatabase;
 import com.journeyapps.barcodescanner.BarcodeEncoder;
 import com.journeyapps.barcodescanner.ScanContract;
 import com.journeyapps.barcodescanner.ScanOptions;
 import com.google.zxing.BarcodeFormat;
 
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Random;
 
 public class MainActivity extends AppCompatActivity {
@@ -68,7 +72,9 @@ public class MainActivity extends AppCompatActivity {
             result -> {
                 if (result.getContents() != null) {
                     String scannedRoomId = result.getContents();
-                    Toast.makeText(this, "Joined Room: " + scannedRoomId, Toast.LENGTH_SHORT).show();
+                    Toast.makeText(this, getPlayerName() + " Joined Room: " + scannedRoomId, Toast.LENGTH_SHORT).show();
+                    Log.d("Rinat","Joined Room: " + scannedRoomId);
+                    Log.d("Rinat",getPlayerName());
                     startGameAsJoiner(scannedRoomId);
                 } else {
                     Toast.makeText(this, "Scan cancelled", Toast.LENGTH_SHORT).show();
@@ -196,6 +202,20 @@ public class MainActivity extends AppCompatActivity {
     private void generateRoomAndShowQR() {
         String roomId = String.format("%04d", new Random().nextInt(10000));
 
+        DatabaseReference roomRef = FirebaseDatabase.getInstance()
+                .getReference("rooms")
+                .child(roomId);
+
+        // יצירת מבנה חדר
+        Map<String, Object> roomData = new HashMap<>();
+        roomData.put("status", "waiting");
+        roomData.put("host", getPlayerName());
+
+        roomRef.setValue(roomData);
+
+        // הוספת שחקן ראשון
+        roomRef.child("players").child("player1").setValue(getPlayerName());
+
         ImageView qrImageView = new ImageView(this);
         try {
             BarcodeEncoder barcodeEncoder = new BarcodeEncoder();
@@ -217,7 +237,7 @@ public class MainActivity extends AppCompatActivity {
             intent.putExtra("gameId", roomId);
             // התיקון: שולחים את השם האמיתי של השחקן שיצר את החדר
             intent.putExtra("currentUser", getPlayerName());
-            intent.putExtra("otherPlayer", "Opponent");
+            Log.d("Rinat", "Opened by: " + getPlayerName());
             startActivity(intent);
         });
 
@@ -225,13 +245,24 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void startGameAsJoiner(String roomId) {
+
+        DatabaseReference roomRef = FirebaseDatabase.getInstance()
+                .getReference("rooms")
+                .child(roomId);
+
+        // הוספת שחקן שני
+        roomRef.child("players").child("player2").setValue(getPlayerName());
+
+        // שינוי סטטוס
+        roomRef.child("status").setValue("playing");
+
         Intent intent = new Intent(MainActivity.this, GameActivity.class);
         intent.putExtra("isOnline", true);
         intent.putExtra("size", 10);
         intent.putExtra("gameId", roomId);
         // התיקון: שולחים את השם האמיתי של השחקן שהצטרף לחדר
         intent.putExtra("currentUser", getPlayerName());
-        intent.putExtra("otherPlayer", "Opponent");
+        Log.d("Rinat", "Joined: " + getPlayerName());
         startActivity(intent);
     }
 
