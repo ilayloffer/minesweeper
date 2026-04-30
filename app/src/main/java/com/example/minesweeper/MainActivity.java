@@ -20,6 +20,8 @@ import android.widget.SeekBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import androidx.activity.result.ActivityResult;
+import androidx.activity.result.ActivityResultCallback;
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
@@ -54,16 +56,19 @@ public class MainActivity extends AppCompatActivity {
 
     // ActivityResultLauncher for Settings screen
     private final ActivityResultLauncher<Intent> settingsLauncher =
-            registerForActivityResult(new ActivityResultContracts.StartActivityForResult(), result -> {
-                if (result.getResultCode() == RESULT_OK && result.getData() != null) {
-                    String theme = result.getData().getStringExtra("theme");
-                    String bgUri = result.getData().getStringExtra("bgUri");
+            registerForActivityResult(new ActivityResultContracts.StartActivityForResult(), new ActivityResultCallback<ActivityResult>() {
+                @Override
+                public void onActivityResult(ActivityResult result) {
+                    if (result.getResultCode() == RESULT_OK && result.getData() != null) {
+                        String theme = result.getData().getStringExtra("theme");
+                        String bgUri = result.getData().getStringExtra("bgUri");
 
-                    if (theme != null) {
-                        prefs.edit().putString("theme", theme).apply();
-                    }
-                    if (bgUri != null) {
-                        prefs.edit().putString("bgUri", bgUri).apply();
+                        if (theme != null) {
+                            prefs.edit().putString("theme", theme).apply();
+                        }
+                        if (bgUri != null) {
+                            prefs.edit().putString("bgUri", bgUri).apply();
+                        }
                     }
                 }
             });
@@ -204,8 +209,10 @@ public class MainActivity extends AppCompatActivity {
         Map<String, Object> roomData = new HashMap<>();
         roomData.put("status", "waiting");
         roomData.put("host", getPlayerName());
+        roomData.put("currentTurn", getPlayerName()); // <--- הוספנו: המארח הוא הראשון שמשחק
 
         roomRef.setValue(roomData);
+
         roomRef.child("players").child("player1").setValue(getPlayerName());
 
         ImageView qrImageView = new ImageView(this);

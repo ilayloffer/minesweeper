@@ -13,7 +13,6 @@ public class OnlineGameController implements GameController {
     private final int size;
     private DatabaseReference gameRef;
 
-    // הפרדנו את המאזינים כדי שהצ'אט לא יפריע למהלכים
     private ValueEventListener stateListener;
     private ValueEventListener boardListener;
 
@@ -46,25 +45,26 @@ public class OnlineGameController implements GameController {
     }
 
     private void listenToFirebase() {
-        if (currentUser.equals("player1")) {
-            createNewGame();
-        }
+        // בודקים אם המשחק קיים. אם לא - השחקן הראשון שמגיע יוצר אותו
+        gameRef.get().addOnSuccessListener(snapshot -> {
+            if (!snapshot.exists()) {
+                createNewGame();
+            }
+        });
 
-        // מאזין למצב המשחק (תור, סטרייקים, ומוודא שהיה שינוי אמיתי במשחק)
+        // מאזין למצב המשחק (תור, סטרייקים)
         stateListener = gameRef.addValueEventListener(new ValueEventListener() {
             @Override
             public void onDataChange(DataSnapshot snapshot) {
                 if (!snapshot.exists() || isGameOver) return;
 
-                // מושך רק את הנתונים שאכפת לנו מהם
                 Long myMisses = snapshot.child(currentUser + "_misses").getValue(Long.class);
                 Long otherMisses = snapshot.child(otherPlayer + "_misses").getValue(Long.class);
                 String newTurn = snapshot.child("playerTurn").getValue(String.class);
-                Long lastUpdate = snapshot.child("lastMoveTimestamp").getValue(Long.class);
 
                 if (myMisses != null) myCurrentMisses = myMisses;
 
-                // בדיקת ניצחון/הפסד
+                // בדיקת ניצחון/הפסד עקב פסילות
                 if (myMisses != null && myMisses >= 3) {
                     endGame(false);
                     return;
@@ -74,12 +74,12 @@ public class OnlineGameController implements GameController {
                     return;
                 }
 
-                // בדיקה אם באמת התור עבר או שהמשחק התחיל
+                // העברת תור ועדכון ה-UI
                 if (newTurn != null && (!newTurn.equals(currentTurn) || currentTurn == null)) {
                     currentTurn = newTurn;
                     boolean isMyTurn = currentUser.equals(currentTurn);
-                    view.setBoardEnabled(isMyTurn);
-                    startTurnTimer(isMyTurn);
+                    view.setBoardEnabled(isMyTurn); // פותח/סוגר את הלוח לפי התור
+                    startTurnTimer(isMyTurn); // מתחיל טיימר
                 }
             }
 
@@ -108,7 +108,13 @@ public class OnlineGameController implements GameController {
                             Long n = cellSnap.child("neighborMines").getValue(Long.class);
                             cell.setNeighborMines(n == null ? 0 : n.intValue());
 
-                            cell.setFlagged(Boolean.TRUE.equals(cellSnap.child("flagged").getValue(Boolean.class)));
+                            // --- השינוי כאן: שומרים על הדגל המקומי שלנו כדי שפיירבייס לא ידרוס אותו ---
+                            if (localBoard[i][j] != null) {
+                                cell.setFlagged(localBoard[i][j].isFlagged());
+                            } else {
+                                cell.setFlagged(false);
+                            }
+                            // -------------------------------------------------------------------
 
                             localBoard[i][j] = cell;
                             view.updateCell(i, j, cell);
@@ -147,12 +153,13 @@ public class OnlineGameController implements GameController {
         }
 
         Map<String, Object> game = new HashMap<>();
-        game.put("playerTurn", "player1");
+        // השחקן שיצר את החדר הוא זה שמקבל את התור הראשון
+        game.put("playerTurn", currentUser);
         game.put("board", boardMap);
         game.put("status", "ACTIVE");
         game.put(currentUser + "_misses", 0);
         game.put(otherPlayer + "_misses", 0);
-        game.put("lastMoveTimestamp", ServerValue.TIMESTAMP); // חותמת זמן התחלתית
+        game.put("lastMoveTimestamp", ServerValue.TIMESTAMP);
 
         gameRef.setValue(game);
     }
@@ -199,7 +206,6 @@ public class OnlineGameController implements GameController {
         isGameOver = true;
         if (turnTimer != null) turnTimer.cancel();
 
-        // עצירת ההאזנה ללוח ולמצב, כדי שלא ירענן בטעות כשהמשחק נגמר
         if (stateListener != null) gameRef.removeEventListener(stateListener);
         if (boardListener != null) gameRef.child("board").removeEventListener(boardListener);
 
@@ -225,6 +231,7 @@ public class OnlineGameController implements GameController {
     public void onCellClicked(int r, int c) {
         if (isGameOver) return;
 
+        // בדיקה שהתור הוא באמת שלי
         if (!currentUser.equals(currentTurn)) {
             view.showMessage("Wait for your turn!");
             return;
@@ -238,6 +245,7 @@ public class OnlineGameController implements GameController {
 
         Map<String, Object> updates = new HashMap<>();
 
+        // אם לחצת על מוקש - סוף משחק מידי (3 סטרייקים)
         if (cell.getHasMine()) {
             updates.put("board/" + r + "_" + c + "/revealed", true);
             updates.put(currentUser + "_misses", 3);
@@ -246,10 +254,12 @@ public class OnlineGameController implements GameController {
             return;
         }
 
+        // גילוי משבצת ומשבצות מסביב
         floodFill(r, c, updates);
 
+        // העברת התור לשחקן השני!
         updates.put("playerTurn", otherPlayer);
-        updates.put(currentUser + "_misses", 0);
+        updates.put(currentUser + "_misses", 0); // מאפס פסילות על מהלך מוצלח
         updates.put("lastMoveTimestamp", ServerValue.TIMESTAMP);
 
         gameRef.updateChildren(updates);
@@ -273,15 +283,18 @@ public class OnlineGameController implements GameController {
 
     @Override
     public void onCellLongClicked(int r, int c) {
-        if (!currentUser.equals(currentTurn) || isGameOver) return;
+        // המשחק נגמר? לא עושים כלום
+        if (isGameOver) return;
 
-        boolean currentFlag = localBoard[r][c].isFlagged();
+        Cell cell = localBoard[r][c];
+        if (cell == null || cell.isRevealed()) return;
 
-        Map<String, Object> updates = new HashMap<>();
-        updates.put("board/" + r + "_" + c + "/flagged", !currentFlag);
-        updates.put("lastMoveTimestamp", ServerValue.TIMESTAMP);
+        // משנים את מצב הדגל רק בזיכרון המקומי!
+        boolean currentFlag = cell.isFlagged();
+        cell.setFlagged(!currentFlag);
 
-        gameRef.updateChildren(updates);
+        // מעדכנים את התצוגה אצלך במסך (ולא פונים לפיירבייס בכלל)
+        view.updateCell(r, c, cell);
     }
 
     @Override

@@ -32,7 +32,7 @@ public class GameActivity extends AppCompatActivity implements GameView {
     private TextView overlayTitle;
     private Button btnHome;
 
-    // --- רכיבי הצ'אט החדשים ---
+    // --- רכיבי הצ'אט ---
     private LinearLayout chatContainer;
     private ListView chatListView;
     private EditText etChatMessage;
@@ -94,7 +94,6 @@ public class GameActivity extends AppCompatActivity implements GameView {
         overlayTitle   = findViewById(R.id.overlayTitle);
         btnHome        = findViewById(R.id.btnHome);
 
-        // קישור רכיבי הצ'אט מה-XML
         chatContainer  = findViewById(R.id.chatContainer);
         chatListView   = findViewById(R.id.chatListView);
         etChatMessage  = findViewById(R.id.etChatMessage);
@@ -110,7 +109,6 @@ public class GameActivity extends AppCompatActivity implements GameView {
     }
 
     private void initOfflineGame() {
-        // במשחק רגיל (אופליין) אנחנו מסתירים את אזור הצ'אט לגמרי
         if (chatContainer != null) {
             chatContainer.setVisibility(View.GONE);
         }
@@ -119,7 +117,6 @@ public class GameActivity extends AppCompatActivity implements GameView {
     }
 
     private void initOnlineGame() {
-        // במשחק אונליין מוודאים שהצ'אט מוצג
         if (chatContainer != null) {
             chatContainer.setVisibility(View.VISIBLE);
         }
@@ -129,7 +126,7 @@ public class GameActivity extends AppCompatActivity implements GameView {
 
         setupDisconnectHook();
         listenForRoomChanges();
-        setupChat(); // מפעילים את הלוגיקה של הצ'אט ישירות על המסך
+        setupChat();
     }
 
     private void setupDisconnectHook() {
@@ -169,6 +166,7 @@ public class GameActivity extends AppCompatActivity implements GameView {
 
                     runOnUiThread(() -> {
                         statusText.setText("Game started vs " + otherPlayer);
+                        // יצירת הקונטרולר - הוא זה שמנהל מעכשיו את התורות
                         controller = new OnlineGameController(GameActivity.this, size, roomId, currentUser, otherPlayer);
                         createBoardUI();
                     });
@@ -272,7 +270,6 @@ public class GameActivity extends AppCompatActivity implements GameView {
         }
     }
 
-    // --- לוגיקת הצ'אט החדשה המשולבת במסך ---
     private void setupChat() {
         if (chatAdapter == null) {
             chatAdapter = new ArrayAdapter<>(this, android.R.layout.simple_list_item_1, chatMessagesList);
@@ -290,7 +287,6 @@ public class GameActivity extends AppCompatActivity implements GameView {
                         if (msg != null) chatMessagesList.add(msg.getSender() + ": " + msg.getText());
                     }
                     chatAdapter.notifyDataSetChanged();
-                    // גלילה אוטומטית להודעה האחרונה
                     if (!chatMessagesList.isEmpty()) chatListView.setSelection(chatMessagesList.size() - 1);
                 }
                 @Override public void onCancelled(@NonNull DatabaseError error) {}
@@ -302,7 +298,7 @@ public class GameActivity extends AppCompatActivity implements GameView {
             String text = etChatMessage.getText().toString().trim();
             if (!text.isEmpty() && chatRef != null) {
                 chatRef.push().setValue(new ChatMessage(currentUser != null ? currentUser : "Player", text));
-                etChatMessage.setText(""); // ניקוי השורה אחרי השליחה
+                etChatMessage.setText("");
             }
         });
     }
