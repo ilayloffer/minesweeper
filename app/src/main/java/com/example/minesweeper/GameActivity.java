@@ -1,6 +1,7 @@
 package com.example.minesweeper;
 
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.graphics.Color;
 import android.os.Bundle;
 import android.view.View;
@@ -31,6 +32,7 @@ public class GameActivity extends AppCompatActivity implements GameView {
     private View overlay;
     private TextView overlayTitle;
     private Button btnHome;
+    private Button btnExitSave; // כפתור השמירה החדש
 
     // --- רכיבי הצ'אט ---
     private LinearLayout chatContainer;
@@ -93,6 +95,7 @@ public class GameActivity extends AppCompatActivity implements GameView {
         overlay        = findViewById(R.id.overlay);
         overlayTitle   = findViewById(R.id.overlayTitle);
         btnHome        = findViewById(R.id.btnHome);
+        btnExitSave    = findViewById(R.id.btnExitSave); // קישור הכפתור מה-XML
 
         chatContainer  = findViewById(R.id.chatContainer);
         chatListView   = findViewById(R.id.chatListView);
@@ -112,11 +115,23 @@ public class GameActivity extends AppCompatActivity implements GameView {
         if (chatContainer != null) {
             chatContainer.setVisibility(View.GONE);
         }
+
+        // הגדרת כפתור שמירה ויציאה רק למצב אופליין
+        btnExitSave.setVisibility(View.VISIBLE);
+        btnExitSave.setOnClickListener(v -> saveAndExitOffline());
+
         controller = new OfflineGameController(this, size, currentUser);
         createBoardUI();
+
+        // בדיקה אם המשתמש לחץ על "Continue" מהמסך הראשי
+        if (getIntent().getBooleanExtra("loadSaved", false)) {
+            loadSavedOfflineData();
+        }
     }
 
     private void initOnlineGame() {
+        btnExitSave.setVisibility(View.GONE); // וודוא שהכפתור מוסתר באונליין
+
         if (chatContainer != null) {
             chatContainer.setVisibility(View.VISIBLE);
         }
@@ -127,6 +142,36 @@ public class GameActivity extends AppCompatActivity implements GameView {
         setupDisconnectHook();
         listenForRoomChanges();
         setupChat();
+    }
+
+    // פונקציה לשמירת נתוני המשחק ויציאה
+    private void saveAndExitOffline() {
+        if (controller instanceof OfflineGameController) {
+            OfflineGameController offline = (OfflineGameController) controller;
+            SharedPreferences sp = getSharedPreferences("SavedGame", MODE_PRIVATE);
+            sp.edit()
+                    .putBoolean("hasSaved", true)
+                    .putInt("size", size)
+                    .putInt("time", offline.getSecondsElapsed())
+                    .putString("data", offline.getBoardData())
+                    .apply();
+
+            Toast.makeText(this, "Game Saved Offline", Toast.LENGTH_SHORT).show();
+            finish();
+        }
+    }
+
+    // פונקציה לטעינת נתונים שנשמרו
+    private void loadSavedOfflineData() {
+        SharedPreferences sp = getSharedPreferences("SavedGame", MODE_PRIVATE);
+        String data = sp.getString("data", "");
+        int time = sp.getInt("time", 0);
+
+        if (controller instanceof OfflineGameController) {
+            ((OfflineGameController) controller).loadExistingGame(data, time);
+            // מוחקים את השמירה לאחר הטעינה כדי למנוע טעינה חוזרת של אותו מצב
+            sp.edit().putBoolean("hasSaved", false).apply();
+        }
     }
 
     private void setupDisconnectHook() {
@@ -166,7 +211,6 @@ public class GameActivity extends AppCompatActivity implements GameView {
 
                     runOnUiThread(() -> {
                         statusText.setText("Game started vs " + otherPlayer);
-                        // יצירת הקונטרולר - הוא זה שמנהל מעכשיו את התורות
                         controller = new OnlineGameController(GameActivity.this, size, roomId, currentUser, otherPlayer);
                         createBoardUI();
                     });
@@ -237,6 +281,9 @@ public class GameActivity extends AppCompatActivity implements GameView {
             overlayTitle.setText(didIWin ? "YOU WIN! 🎉" : "YOU LOSE! 💥");
             overlayTitle.setTextColor(didIWin ? Color.GREEN : Color.RED);
             overlay.setVisibility(View.VISIBLE);
+
+            // בסיום משחק (ניצחון/הפסד) מנקים את השמירה אם הייתה כזו
+            getSharedPreferences("SavedGame", MODE_PRIVATE).edit().putBoolean("hasSaved", false).apply();
         });
     }
 

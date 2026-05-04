@@ -4,6 +4,18 @@
     android:layout_height="match_parent"
     android:background="#F5F5F5">
 
+    <Button
+        android:id="@+id/btnExitSave"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Save &amp; Exit"
+        android:layout_alignParentTop="true"
+        android:layout_alignParentLeft="true"
+        android:layout_margin="10dp"
+        android:backgroundTint="#4CAF50"
+        android:textColor="#FFFFFF"
+        android:visibility="gone" />
+
     <TextView
         android:id="@+id/statusText"
         android:layout_width="wrap_content"
@@ -23,7 +35,6 @@
         android:layout_alignParentBottom="true"
         android:orientation="vertical"
         android:background="#E0E0E0">
-
         <ListView
             android:id="@+id/chatListView"
             android:layout_width="match_parent"
@@ -120,5 +131,4 @@
                 android:padding="12dp"/>
         </LinearLayout>
     </FrameLayout>
-
 </RelativeLayout>

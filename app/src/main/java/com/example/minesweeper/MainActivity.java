@@ -1,91 +1,25 @@
 package com.example.minesweeper;
 
-import android.content.BroadcastReceiver;
 import android.content.Intent;
-import android.content.IntentFilter;
 import android.content.SharedPreferences;
-import android.graphics.Bitmap;
-import android.net.ConnectivityManager;
-import android.os.Build;
 import android.os.Bundle;
-import android.text.InputType;
-import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
+import android.view.View;
 import android.widget.Button;
-import android.widget.EditText;
-import android.widget.ImageView;
-import android.widget.LinearLayout;
 import android.widget.SeekBar;
 import android.widget.TextView;
 import android.widget.Toast;
-
-import androidx.activity.result.ActivityResult;
-import androidx.activity.result.ActivityResultCallback;
-import androidx.activity.result.ActivityResultLauncher;
-import androidx.activity.result.contract.ActivityResultContracts;
-import androidx.annotation.NonNull;
-import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
-
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseUser;
-import com.google.firebase.database.DataSnapshot;
-import com.google.firebase.database.DatabaseError;
-import com.google.firebase.database.DatabaseReference;
-import com.google.firebase.database.FirebaseDatabase;
-import com.google.firebase.database.ValueEventListener;
-import com.journeyapps.barcodescanner.BarcodeEncoder;
-import com.journeyapps.barcodescanner.ScanContract;
-import com.journeyapps.barcodescanner.ScanOptions;
-import com.google.zxing.BarcodeFormat;
-
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Random;
 
 public class MainActivity extends AppCompatActivity {
 
     private SeekBar difficultySeek;
-    private TextView difficultyLabel;
-    private TextView tvWelcome;
-    private Button startBtn;
-    private Button startOnlineBtn;
-    private SharedPreferences prefs;
+    private TextView difficultyLabel, tvWelcome;
+    private Button startBtn, btnOnlineMatch, btnLeaderboard, btnContinue;
     private FirebaseAuth mAuth;
-
-    // ActivityResultLauncher for Settings screen
-    private final ActivityResultLauncher<Intent> settingsLauncher =
-            registerForActivityResult(new ActivityResultContracts.StartActivityForResult(), new ActivityResultCallback<ActivityResult>() {
-                @Override
-                public void onActivityResult(ActivityResult result) {
-                    if (result.getResultCode() == RESULT_OK && result.getData() != null) {
-                        String theme = result.getData().getStringExtra("theme");
-                        String bgUri = result.getData().getStringExtra("bgUri");
-
-                        if (theme != null) {
-                            prefs.edit().putString("theme", theme).apply();
-                        }
-                        if (bgUri != null) {
-                            prefs.edit().putString("bgUri", bgUri).apply();
-                        }
-                    }
-                }
-            });
-
-    // ActivityResultLauncher for QR Scanner
-    private final ActivityResultLauncher<ScanOptions> qrScannerLauncher = registerForActivityResult(
-            new ScanContract(),
-            result -> {
-                if (result.getContents() != null) {
-                    checkRoomAndJoin(result.getContents()); // בדיקה לפני הצטרפות
-                } else {
-                    Toast.makeText(this, "Scan cancelled", Toast.LENGTH_SHORT).show();
-                }
-            });
-
-    // BroadcastReceiver for network changes
-    private final BroadcastReceiver networkReceiver = new NetworkChangeReceiver();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -93,291 +27,104 @@ public class MainActivity extends AppCompatActivity {
         setContentView(R.layout.activity_main);
 
         mAuth = FirebaseAuth.getInstance();
-        prefs = getSharedPreferences("MinePrefs", MODE_PRIVATE);
 
-        // כפתור Leaderboard
-        Button btnLeaderboard = findViewById(R.id.btnLeaderboard);
-        btnLeaderboard.setOnClickListener(v -> {
-            Intent intent = new Intent(MainActivity.this, LeaderboardActivity.class);
-            intent.putExtra("currentUser", getPlayerName());
-            startActivity(intent);
-        });
-
-        // View bindings
+        // אתחול רכיבים
         difficultySeek = findViewById(R.id.difficultySeek);
         difficultyLabel = findViewById(R.id.difficultyLabel);
         tvWelcome = findViewById(R.id.tvWelcome);
         startBtn = findViewById(R.id.startBtn);
-        startOnlineBtn = findViewById(R.id.btnOnlineMatch);
+        btnOnlineMatch = findViewById(R.id.btnOnlineMatch);
+        btnLeaderboard = findViewById(R.id.btnLeaderboard);
+        btnContinue = findViewById(R.id.btnContinue);
 
-        // --- Difficulty Logic ---
-        int savedDifficulty = prefs.getInt("difficulty", 5);
-        difficultySeek.setMax(15);
-        difficultySeek.setProgress(savedDifficulty);
-        updateDifficultyLabel(savedDifficulty);
+        setupListeners();
+    }
 
+    private void setupListeners() {
         difficultySeek.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override
             public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
-                updateDifficultyLabel(progress);
+                int size = progress + 5;
+                difficultyLabel.setText("Board Size: " + size + " x " + size);
             }
-            @Override
-            public void onStartTrackingTouch(SeekBar seekBar) {}
-            @Override
-            public void onStopTrackingTouch(SeekBar seekBar) {
-                prefs.edit().putInt("difficulty", seekBar.getProgress()).apply();
-            }
+            @Override public void onStartTrackingTouch(SeekBar seekBar) {}
+            @Override public void onStopTrackingTouch(SeekBar seekBar) {}
         });
 
-        // --- Buttons ---
-
-        // 1. כפתור משחק רגיל (Offline)
         startBtn.setOnClickListener(v -> {
             int size = difficultySeek.getProgress() + 5;
-            Intent intent = new Intent(MainActivity.this, GameActivity.class);
-            intent.putExtra("size", size);
+            startGame(size, false);
+        });
+
+        btnContinue.setOnClickListener(v -> {
+            SharedPreferences sp = getSharedPreferences("SavedGame", MODE_PRIVATE);
+            int savedSize = sp.getInt("size", 10);
+            Intent intent = new Intent(this, GameActivity.class);
+            intent.putExtra("size", savedSize);
             intent.putExtra("isOnline", false);
+            intent.putExtra("loadSaved", true);
             intent.putExtra("currentUser", getPlayerName());
             startActivity(intent);
         });
 
-        // 2. כפתור משחק רשת (Online) עם חדרים וברקוד
-        startOnlineBtn.setOnClickListener(v -> {
-            FirebaseUser currentUser = mAuth.getCurrentUser();
-            if (currentUser == null) {
-                Toast.makeText(this, "Please Login to play Online", Toast.LENGTH_SHORT).show();
-                startActivity(new Intent(MainActivity.this, LoginActivity.class));
+        btnOnlineMatch.setOnClickListener(v -> {
+            if (mAuth.getCurrentUser() == null) {
+                startActivity(new Intent(this, LoginActivity.class));
             } else {
-                showMultiplayerDialog();
+                // לוגיקה של אונליין (חיפוש חדר/שידוך)
+                Toast.makeText(this, "Searching for online match...", Toast.LENGTH_SHORT).show();
             }
         });
 
-        // --- Music Check on Launch ---
-        if (prefs.getBoolean("music_on", false)) {
-            handleMusicService(true);
-        }
+        btnLeaderboard.setOnClickListener(v -> {
+            Intent i = new Intent(this, LeaderboardActivity.class);
+            i.putExtra("currentUser", getPlayerName());
+            startActivity(i);
+        });
+    }
 
-        // Register network receiver
-        try {
-            registerReceiver(networkReceiver, new IntentFilter(ConnectivityManager.CONNECTIVITY_ACTION));
-        } catch (Exception e) {
-            Log.e("MainActivity", "Receiver error: " + e.getMessage());
-        }
-    } // סגירת פונקציית onCreate
+    private void startGame(int size, boolean loadSaved) {
+        Intent i = new Intent(this, GameActivity.class);
+        i.putExtra("size", size);
+        i.putExtra("isOnline", false);
+        i.putExtra("loadSaved", loadSaved);
+        i.putExtra("currentUser", getPlayerName());
+        startActivity(i);
+    }
 
-    // --- חילוץ שם השחקן ---
     private String getPlayerName() {
-        FirebaseUser currentUser = mAuth.getCurrentUser();
-        String name = "Guest";
-
-        if (currentUser != null) {
-            String fbName = currentUser.getDisplayName();
-            if (fbName != null && !fbName.isEmpty()) {
-                name = fbName;
-            } else if (getIntent().getStringExtra("USERNAME") != null) {
-                name = getIntent().getStringExtra("USERNAME");
-            } else if (currentUser.getEmail() != null) {
-                name = currentUser.getEmail().split("@")[0];
-            }
-        } else if (getIntent().getStringExtra("USERNAME") != null) {
-            name = getIntent().getStringExtra("USERNAME");
+        FirebaseUser user = mAuth.getCurrentUser();
+        if (user != null) {
+            return user.getDisplayName() != null ? user.getDisplayName() : user.getEmail().split("@")[0];
         }
-        return name;
+        return "Guest";
     }
-
-    // --- Multiplayer Matchmaking Methods ---
-
-    private void showMultiplayerDialog() {
-        AlertDialog.Builder builder = new AlertDialog.Builder(this);
-        builder.setTitle("Online Multiplayer");
-        builder.setMessage("Do you want to create a new room or join an existing one?");
-
-        builder.setPositiveButton("Create Room", (dialog, which) -> generateRoomAndShowQR());
-        builder.setNegativeButton("Join Room", (dialog, which) -> showJoinDialog());
-
-        builder.show();
-    }
-
-    private void generateRoomAndShowQR() {
-        String roomId = String.format("%04d", new Random().nextInt(10000));
-
-        DatabaseReference roomRef = FirebaseDatabase.getInstance()
-                .getReference("rooms")
-                .child(roomId);
-
-        // יצירת מבנה חדר
-        Map<String, Object> roomData = new HashMap<>();
-        roomData.put("status", "waiting");
-        roomData.put("host", getPlayerName());
-        roomData.put("currentTurn", getPlayerName()); // <--- הוספנו: המארח הוא הראשון שמשחק
-
-        roomRef.setValue(roomData);
-
-        roomRef.child("players").child("player1").setValue(getPlayerName());
-
-        ImageView qrImageView = new ImageView(this);
-        try {
-            BarcodeEncoder barcodeEncoder = new BarcodeEncoder();
-            Bitmap bitmap = barcodeEncoder.encodeBitmap(roomId, BarcodeFormat.QR_CODE, 600, 600);
-            qrImageView.setImageBitmap(bitmap);
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-
-        AlertDialog.Builder builder = new AlertDialog.Builder(this);
-        builder.setTitle("Room Code: " + roomId);
-        builder.setMessage("Ask your friend to scan this QR code or enter the number " + roomId + ".");
-        builder.setView(qrImageView);
-
-        builder.setPositiveButton("Start Game", (dialog, which) -> {
-            Intent intent = new Intent(MainActivity.this, GameActivity.class);
-            intent.putExtra("isOnline", true);
-            intent.putExtra("size", 10);
-            intent.putExtra("gameId", roomId);
-            intent.putExtra("currentUser", getPlayerName());
-            startActivity(intent);
-        });
-
-        builder.show();
-    }
-
-    private void checkRoomAndJoin(String roomId) {
-        DatabaseReference roomRef = FirebaseDatabase.getInstance().getReference("rooms").child(roomId);
-
-        roomRef.addListenerForSingleValueEvent(new ValueEventListener() {
-            @Override
-            public void onDataChange(@NonNull DataSnapshot snapshot) {
-                if (snapshot.exists()) {
-                    String status = snapshot.child("status").getValue(String.class);
-                    // שולפים את שם יוצר החדר (המארח) מתוך הנתונים
-                    String host = snapshot.child("host").getValue(String.class);
-                    String currentPlayerName = getPlayerName();
-
-                    if ("waiting".equals(status)) {
-                        // מוודאים שהשחקן לא מנסה להיכנס לחדר של עצמו
-                        if (currentPlayerName.equals(host)) {
-                            Toast.makeText(MainActivity.this, "You cannot play against yourself!, try offline game instead", Toast.LENGTH_SHORT).show();
-                        } else {
-                            startGameAsJoiner(roomId); // הכל תקין, אפשר להיכנס
-                        }
-                    } else {
-                        Toast.makeText(MainActivity.this, "Room is already full or playing", Toast.LENGTH_SHORT).show();
-                    }
-                } else {
-                    Toast.makeText(MainActivity.this, "Room not found! Please check the code.", Toast.LENGTH_SHORT).show();
-                }
-            }
-
-            @Override
-            public void onCancelled(@NonNull DatabaseError error) {
-                Toast.makeText(MainActivity.this, "Database error: " + error.getMessage(), Toast.LENGTH_SHORT).show();
-            }
-        });
-    }
-
-    private void startGameAsJoiner(String roomId) {
-        DatabaseReference roomRef = FirebaseDatabase.getInstance()
-                .getReference("rooms")
-                .child(roomId);
-
-        roomRef.child("players").child("player2").setValue(getPlayerName());
-        roomRef.child("status").setValue("playing");
-
-        Intent intent = new Intent(MainActivity.this, GameActivity.class);
-        intent.putExtra("isOnline", true);
-        intent.putExtra("size", 10);
-        intent.putExtra("gameId", roomId);
-        intent.putExtra("currentUser", getPlayerName());
-        startActivity(intent);
-    }
-
-    private void showJoinDialog() {
-        AlertDialog.Builder builder = new AlertDialog.Builder(this);
-        builder.setTitle("Join Room");
-        builder.setMessage("Enter the 4-digit room code or scan the QR.");
-
-        final EditText input = new EditText(this);
-        input.setInputType(InputType.TYPE_CLASS_NUMBER);
-        input.setHint("e.g., 4829");
-
-        LinearLayout layout = new LinearLayout(this);
-        layout.setOrientation(LinearLayout.VERTICAL);
-        layout.setPadding(60, 20, 60, 0);
-        layout.addView(input);
-        builder.setView(layout);
-
-        builder.setPositiveButton("Join", (dialog, which) -> {
-            String code = input.getText().toString().trim();
-            if (!code.isEmpty()) {
-                checkRoomAndJoin(code);
-            } else {
-                Toast.makeText(MainActivity.this, "Please enter a valid code", Toast.LENGTH_SHORT).show();
-            }
-        });
-
-        builder.setNeutralButton("Scan QR", (dialog, which) -> startQRScanner());
-        builder.setNegativeButton("Cancel", (dialog, which) -> dialog.cancel());
-
-        builder.show();
-    }
-
-    private void startQRScanner() {
-        ScanOptions options = new ScanOptions();
-        options.setPrompt("Scan your friend's Room QR Code");
-        options.setBeepEnabled(true);
-        options.setOrientationLocked(true);
-        options.setCaptureActivity(com.journeyapps.barcodescanner.CaptureActivity.class);
-
-        qrScannerLauncher.launch(options);
-    }
-
-    // --- Utility Methods ---
 
     @Override
     protected void onResume() {
         super.onResume();
-        updateWelcomeMessage();
+        tvWelcome.setText("Welcome, " + getPlayerName() + "!");
+
+        SharedPreferences sp = getSharedPreferences("SavedGame", MODE_PRIVATE);
+        boolean hasSaved = sp.getBoolean("hasSaved", false);
+        btnContinue.setVisibility(hasSaved ? View.VISIBLE : View.GONE);
+
+        // רענון התפריט העליון כדי לעדכן נראות כפתורי Login/Logout
         invalidateOptionsMenu();
     }
 
-    private void updateWelcomeMessage() {
-        String displayInternal = getPlayerName();
-        tvWelcome.setText("Welcome, " + displayInternal + "!");
-    }
-
-    private void updateDifficultyLabel(int progress) {
-        int size = progress + 5;
-        difficultyLabel.setText("Board Size: " + size + " x " + size);
-    }
-
-    @Override
-    protected void onDestroy() {
-        super.onDestroy();
-        try {
-            unregisterReceiver(networkReceiver);
-        } catch (IllegalArgumentException e) {
-            // התעלמות אם לא נרשם
-        }
-    }
-
-    // --- Menu Methods ---
+    // --- חיבור ה-MENU ששלחת לקוד ---
 
     @Override
     public boolean onCreateOptionsMenu(Menu menu) {
         getMenuInflater().inflate(R.menu.main_menu, menu);
 
-        MenuItem musicItem = menu.findItem(R.id.action_music);
-        musicItem.setChecked(prefs.getBoolean("music_on", false));
-
         boolean isLoggedIn = mAuth.getCurrentUser() != null;
 
-        MenuItem loginItem = menu.findItem(R.id.menu_login);
-        MenuItem registerItem = menu.findItem(R.id.menu_register);
-        MenuItem logoutItem = menu.findItem(R.id.menu_logout);
-
-        if (loginItem != null) loginItem.setVisible(!isLoggedIn);
-        if (registerItem != null) registerItem.setVisible(!isLoggedIn);
-        if (logoutItem != null) logoutItem.setVisible(isLoggedIn);
+        // שליטה בנראות לפי מצב התחברות
+        menu.findItem(R.id.menu_login).setVisible(!isLoggedIn);
+        menu.findItem(R.id.menu_register).setVisible(!isLoggedIn);
+        menu.findItem(R.id.menu_logout).setVisible(isLoggedIn);
 
         return true;
     }
@@ -386,18 +133,7 @@ public class MainActivity extends AppCompatActivity {
     public boolean onOptionsItemSelected(MenuItem item) {
         int id = item.getItemId();
 
-        if (id == R.id.action_music) {
-            boolean newState = !item.isChecked();
-            item.setChecked(newState);
-            prefs.edit().putBoolean("music_on", newState).apply();
-            handleMusicService(newState);
-            return true;
-        }
-        else if (id == R.id.menu_settings) {
-            settingsLauncher.launch(new Intent(this, SettingsActivity.class));
-            return true;
-        }
-        else if (id == R.id.menu_login) {
+        if (id == R.id.menu_login) {
             startActivity(new Intent(this, LoginActivity.class));
             return true;
         }
@@ -405,31 +141,31 @@ public class MainActivity extends AppCompatActivity {
             startActivity(new Intent(this, RegisterActivity.class));
             return true;
         }
-        else if (id == R.id.leaderboard) {
-            startActivity(new Intent(this, LeaderboardActivity.class));
-            return true;
-        }
         else if (id == R.id.menu_logout) {
             mAuth.signOut();
-            Toast.makeText(this, "Logged out", Toast.LENGTH_SHORT).show();
-            updateWelcomeMessage();
-            invalidateOptionsMenu();
+            recreate(); // רענון המסך לעדכון הממשק
+            return true;
+        }
+        else if (id == R.id.leaderboard) {
+            Intent intent = new Intent(this, LeaderboardActivity.class);
+            intent.putExtra("currentUser", getPlayerName());
+            startActivity(intent);
+            return true;
+        }
+        else if (id == R.id.menu_settings) {
+            Toast.makeText(this, "Settings clicked", Toast.LENGTH_SHORT).show();
+            return true;
+        }
+        else if (id == R.id.action_music) {
+            item.setChecked(!item.isChecked());
+            if (item.isChecked()) {
+                Toast.makeText(this, "Music: ON", Toast.LENGTH_SHORT).show();
+            } else {
+                Toast.makeText(this, "Music: OFF", Toast.LENGTH_SHORT).show();
+            }
             return true;
         }
 
         return super.onOptionsItemSelected(item);
-    }
-
-    private void handleMusicService(boolean start) {
-        Intent svc = new Intent(this, MusicService.class);
-        if (start) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                startForegroundService(svc);
-            } else {
-                startService(svc);
-            }
-        } else {
-            stopService(svc);
-        }
     }
 }
