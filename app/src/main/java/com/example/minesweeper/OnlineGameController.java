@@ -1,9 +1,7 @@
 package com.example.minesweeper;
 
 import android.os.CountDownTimer;
-
 import com.google.firebase.database.*;
-
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Random;
@@ -45,41 +43,37 @@ public class OnlineGameController implements GameController {
     }
 
     private void listenToFirebase() {
-        // בודקים אם המשחק קיים. אם לא - השחקן הראשון שמגיע יוצר אותו
         gameRef.get().addOnSuccessListener(snapshot -> {
             if (!snapshot.exists()) {
                 createNewGame();
             }
         });
 
-        // מאזין למצב המשחק (תור, סטרייקים)
         stateListener = gameRef.addValueEventListener(new ValueEventListener() {
             @Override
             public void onDataChange(DataSnapshot snapshot) {
                 if (!snapshot.exists() || isGameOver) return;
 
                 Long myMisses = snapshot.child(currentUser + "_misses").getValue(Long.class);
-                Long otherMisses = snapshot.child(otherPlayer + "_misses").getValue(Long.class);
                 String newTurn = snapshot.child("playerTurn").getValue(String.class);
 
                 if (myMisses != null) myCurrentMisses = myMisses;
 
-                // בדיקת ניצחון/הפסד עקב פסילות
                 if (myMisses != null && myMisses >= 3) {
                     endGame(false);
                     return;
                 }
+                Long otherMisses = snapshot.child(otherPlayer + "_misses").getValue(Long.class);
                 if (otherMisses != null && otherMisses >= 3) {
                     endGame(true);
                     return;
                 }
 
-                // העברת תור ועדכון ה-UI
                 if (newTurn != null && (!newTurn.equals(currentTurn) || currentTurn == null)) {
                     currentTurn = newTurn;
                     boolean isMyTurn = currentUser.equals(currentTurn);
-                    view.setBoardEnabled(isMyTurn); // פותח/סוגר את הלוח לפי התור
-                    startTurnTimer(isMyTurn); // מתחיל טיימר
+                    view.setBoardEnabled(isMyTurn);
+                    startTurnTimer(isMyTurn);
                 }
             }
 
@@ -89,11 +83,12 @@ public class OnlineGameController implements GameController {
             }
         });
 
-        // מאזין ללוח בנפרד
         boardListener = gameRef.child("board").addValueEventListener(new ValueEventListener() {
             @Override
             public void onDataChange(DataSnapshot boardSnap) {
                 if (!boardSnap.exists() || isGameOver) return;
+
+                int minesInOnlineBoard = 0;
 
                 for (int i = 0; i < size; i++) {
                     for (int j = 0; j < size; j++) {
@@ -103,23 +98,31 @@ public class OnlineGameController implements GameController {
                         if (cellSnap.exists()) {
                             Cell cell = new Cell();
                             cell.setRevealed(Boolean.TRUE.equals(cellSnap.child("revealed").getValue(Boolean.class)));
-                            cell.setHasMine(Boolean.TRUE.equals(cellSnap.child("hasMine").getValue(Boolean.class)));
+
+                            boolean hasMine = Boolean.TRUE.equals(cellSnap.child("hasMine").getValue(Boolean.class));
+                            cell.setHasMine(hasMine);
+                            if (hasMine) {
+                                minesInOnlineBoard++;
+                            }
 
                             Long n = cellSnap.child("neighborMines").getValue(Long.class);
                             cell.setNeighborMines(n == null ? 0 : n.intValue());
 
-                            // --- השינוי כאן: שומרים על הדגל המקומי שלנו כדי שפיירבייס לא ידרוס אותו ---
                             if (localBoard[i][j] != null) {
                                 cell.setFlagged(localBoard[i][j].isFlagged());
                             } else {
                                 cell.setFlagged(false);
                             }
-                            // -------------------------------------------------------------------
 
                             localBoard[i][j] = cell;
                             view.updateCell(i, j, cell);
                         }
                     }
+                }
+
+                // עדכון המונה ב-Activity לפי כמות המוקשים שהשרת יצר בפועל בחדר
+                if (view instanceof GameActivity) {
+                    ((GameActivity) view).setDynamicBombsCount(minesInOnlineBoard);
                 }
             }
 
@@ -153,7 +156,6 @@ public class OnlineGameController implements GameController {
         }
 
         Map<String, Object> game = new HashMap<>();
-        // השחקן שיצר את החדר הוא זה שמקבל את התור הראשון
         game.put("playerTurn", currentUser);
         game.put("board", boardMap);
         game.put("status", "ACTIVE");
@@ -212,6 +214,7 @@ public class OnlineGameController implements GameController {
         view.showGameOver(didIWin);
         view.updateStatus(didIWin ? "You Won! 🎉" : "You Lost! 💥");
 
+        // עדכון הלידרבורד של האונליין (onlineWins)
         if (didIWin && currentUser != null && !currentUser.equals("Guest")) {
             DatabaseReference userRef = FirebaseDatabase.getInstance().getReference("leaderboard").child(currentUser);
             userRef.child("onlineWins").addListenerForSingleValueEvent(new ValueEventListener() {
@@ -220,6 +223,7 @@ public class OnlineGameController implements GameController {
                     Long currentWins = snapshot.getValue(Long.class);
                     if (currentWins == null) currentWins = 0L;
                     userRef.child("onlineWins").setValue(currentWins + 1);
+                    userRef.child("username").setValue(currentUser);
                 }
                 @Override
                 public void onCancelled(DatabaseError error) {}
@@ -231,7 +235,6 @@ public class OnlineGameController implements GameController {
     public void onCellClicked(int r, int c) {
         if (isGameOver) return;
 
-        // בדיקה שהתור הוא באמת שלי
         if (!currentUser.equals(currentTurn)) {
             view.showMessage("Wait for your turn!");
             return;
@@ -245,7 +248,6 @@ public class OnlineGameController implements GameController {
 
         Map<String, Object> updates = new HashMap<>();
 
-        // אם לחצת על מוקש - סוף משחק מידי (3 סטרייקים)
         if (cell.getHasMine()) {
             updates.put("board/" + r + "_" + c + "/revealed", true);
             updates.put(currentUser + "_misses", 3);
@@ -254,12 +256,10 @@ public class OnlineGameController implements GameController {
             return;
         }
 
-        // גילוי משבצת ומשבצות מסביב
         floodFill(r, c, updates);
 
-        // העברת התור לשחקן השני!
         updates.put("playerTurn", otherPlayer);
-        updates.put(currentUser + "_misses", 0); // מאפס פסילות על מהלך מוצלח
+        updates.put(currentUser + "_misses", 0);
         updates.put("lastMoveTimestamp", ServerValue.TIMESTAMP);
 
         gameRef.updateChildren(updates);
@@ -283,17 +283,14 @@ public class OnlineGameController implements GameController {
 
     @Override
     public void onCellLongClicked(int r, int c) {
-        // המשחק נגמר? לא עושים כלום
         if (isGameOver) return;
 
         Cell cell = localBoard[r][c];
         if (cell == null || cell.isRevealed()) return;
 
-        // משנים את מצב הדגל רק בזיכרון המקומי!
         boolean currentFlag = cell.isFlagged();
         cell.setFlagged(!currentFlag);
 
-        // מעדכנים את התצוגה אצלך במסך (ולא פונים לפיירבייס בכלל)
         view.updateCell(r, c, cell);
     }
 

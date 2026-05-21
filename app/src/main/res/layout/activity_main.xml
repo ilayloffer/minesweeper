@@ -87,4 +87,14 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"/>
 
+    <Button
+        android:id="@+id/btnInviteFriend"
+        android:text="Invite a Friend 📩"
+        android:textSize="18sp"
+        android:padding="12dp"
+        android:backgroundTint="#9C27B0"
+        android:layout_marginTop="8dp"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"/>
+
 </LinearLayout>

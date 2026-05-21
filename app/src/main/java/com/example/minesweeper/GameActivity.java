@@ -28,11 +28,12 @@ import java.util.List;
 public class GameActivity extends AppCompatActivity implements GameView {
 
     private TextView statusText;
+    private TextView tvCellsRemaining;
     private LinearLayout boardContainer;
     private View overlay;
     private TextView overlayTitle;
     private Button btnHome;
-    private Button btnExitSave; // כפתור השמירה החדש
+    private Button btnExitSave;
 
     // --- רכיבי הצ'אט ---
     private LinearLayout chatContainer;
@@ -42,6 +43,9 @@ public class GameActivity extends AppCompatActivity implements GameView {
 
     private GameController controller;
     private Button[][] buttons;
+
+    // --- ניהול מונה דינמי אמין ---
+    private int bombsCount = 10; // ברירת מחדל התחלתית (יוצג 90 משבצות פנויות)
     private int size;
     private boolean isOnline;
     private boolean gameStarted = false;
@@ -90,25 +94,32 @@ public class GameActivity extends AppCompatActivity implements GameView {
     }
 
     private void bindViews() {
-        statusText     = findViewById(R.id.statusText);
-        boardContainer = findViewById(R.id.boardContainer);
-        overlay        = findViewById(R.id.overlay);
-        overlayTitle   = findViewById(R.id.overlayTitle);
-        btnHome        = findViewById(R.id.btnHome);
-        btnExitSave    = findViewById(R.id.btnExitSave); // קישור הכפתור מה-XML
+        statusText        = findViewById(R.id.statusText);
+        tvCellsRemaining  = findViewById(R.id.tvCellsRemaining);
+        boardContainer    = findViewById(R.id.boardContainer);
+        overlay           = findViewById(R.id.overlay);
+        overlayTitle      = findViewById(R.id.overlayTitle);
+        btnHome           = findViewById(R.id.btnHome);
+        btnExitSave       = findViewById(R.id.btnExitSave);
 
-        chatContainer  = findViewById(R.id.chatContainer);
-        chatListView   = findViewById(R.id.chatListView);
-        etChatMessage  = findViewById(R.id.etChatMessage);
-        btnSendChat    = findViewById(R.id.btnSendChat);
+        chatContainer     = findViewById(R.id.chatContainer);
+        chatListView      = findViewById(R.id.chatListView);
+        etChatMessage     = findViewById(R.id.etChatMessage);
+        btnSendChat       = findViewById(R.id.btnSendChat);
     }
 
     private void readIntent() {
         Intent intent = getIntent();
         size        = intent.getIntExtra("size", 10);
         isOnline    = intent.getBooleanExtra("isOnline", false);
-        roomId      = intent.getStringExtra("gameId");
+        roomId      = intent.getStringExtra("roomCode");
         currentUser = intent.getStringExtra("currentUser");
+
+        if (size == 10) {
+            bombsCount = 10;
+        } else {
+            bombsCount = (int) (size * size * 0.12);
+        }
     }
 
     private void initOfflineGame() {
@@ -116,24 +127,28 @@ public class GameActivity extends AppCompatActivity implements GameView {
             chatContainer.setVisibility(View.GONE);
         }
 
-        // הגדרת כפתור שמירה ויציאה רק למצב אופליין
         btnExitSave.setVisibility(View.VISIBLE);
         btnExitSave.setOnClickListener(v -> saveAndExitOffline());
 
         controller = new OfflineGameController(this, size, currentUser);
         createBoardUI();
 
-        // בדיקה אם המשתמש לחץ על "Continue" מהמסך הראשי
         if (getIntent().getBooleanExtra("loadSaved", false)) {
             loadSavedOfflineData();
         }
     }
 
     private void initOnlineGame() {
-        btnExitSave.setVisibility(View.GONE); // וודוא שהכפתור מוסתר באונליין
+        btnExitSave.setVisibility(View.GONE);
 
         if (chatContainer != null) {
             chatContainer.setVisibility(View.VISIBLE);
+        }
+
+        if (roomId == null || roomId.isEmpty()) {
+            Toast.makeText(this, "Error: Invalid Room Code", Toast.LENGTH_SHORT).show();
+            finish();
+            return;
         }
 
         roomRef = FirebaseDatabase.getInstance().getReference("rooms").child(roomId);
@@ -144,7 +159,6 @@ public class GameActivity extends AppCompatActivity implements GameView {
         setupChat();
     }
 
-    // פונקציה לשמירת נתוני המשחק ויציאה
     private void saveAndExitOffline() {
         if (controller instanceof OfflineGameController) {
             OfflineGameController offline = (OfflineGameController) controller;
@@ -161,7 +175,6 @@ public class GameActivity extends AppCompatActivity implements GameView {
         }
     }
 
-    // פונקציה לטעינת נתונים שנשמרו
     private void loadSavedOfflineData() {
         SharedPreferences sp = getSharedPreferences("SavedGame", MODE_PRIVATE);
         String data = sp.getString("data", "");
@@ -169,7 +182,6 @@ public class GameActivity extends AppCompatActivity implements GameView {
 
         if (controller instanceof OfflineGameController) {
             ((OfflineGameController) controller).loadExistingGame(data, time);
-            // מוחקים את השמירה לאחר הטעינה כדי למנוע טעינה חוזרת של אותו מצב
             sp.edit().putBoolean("hasSaved", false).apply();
         }
     }
@@ -196,10 +208,10 @@ public class GameActivity extends AppCompatActivity implements GameView {
         roomListener = new ValueEventListener() {
             @Override
             public void onDataChange(@NonNull DataSnapshot snapshot) {
-                String player1 = snapshot.child("players").child("player1").getValue(String.class);
-                String player2 = snapshot.child("players").child("player2").getValue(String.class);
+                String host = snapshot.child("host").getValue(String.class);
+                String guest = snapshot.child("guest").getValue(String.class);
 
-                if (player1 == null || player2 == null) {
+                if (host == null || guest == null || guest.isEmpty()) {
                     if (gameStarted) { finish(); }
                     else { statusText.setText("Waiting for opponent..."); }
                     return;
@@ -207,7 +219,7 @@ public class GameActivity extends AppCompatActivity implements GameView {
 
                 if (!gameStarted) {
                     gameStarted = true;
-                    otherPlayer = currentUser.equals(player1) ? player2 : player1;
+                    otherPlayer = currentUser.equals(host) ? guest : host;
 
                     runOnUiThread(() -> {
                         statusText.setText("Game started vs " + otherPlayer);
@@ -243,6 +255,8 @@ public class GameActivity extends AppCompatActivity implements GameView {
             }
             boardContainer.addView(row);
         }
+
+        updateRemainingUI();
     }
 
     @Override
@@ -254,6 +268,7 @@ public class GameActivity extends AppCompatActivity implements GameView {
     public void updateCell(int r, int c, Cell cell) {
         runOnUiThread(() -> {
             Button btn = buttons[r][c];
+
             if (cell.isRevealed()) {
                 btn.setEnabled(false);
                 if (cell.getHasMine()) {
@@ -267,6 +282,38 @@ public class GameActivity extends AppCompatActivity implements GameView {
             } else {
                 btn.setText(cell.isFlagged() ? "🚩" : "");
             }
+
+            updateRemainingUI();
+        });
+    }
+
+    private void updateRemainingUI() {
+        if (buttons == null) return;
+
+        int closedButtonsCount = 0;
+
+        for (int i = 0; i < size; i++) {
+            for (int j = 0; j < size; j++) {
+                if (buttons[i][j] != null && buttons[i][j].isEnabled()) {
+                    closedButtonsCount++;
+                }
+            }
+        }
+
+        int safeCellsLeft = closedButtonsCount - bombsCount;
+
+        if (safeCellsLeft < 0) {
+            safeCellsLeft = 0;
+        }
+
+        tvCellsRemaining.setText("תאים ללא פצצות: " + safeCellsLeft);
+    }
+
+    // פונקציה המאפשרת לבקרים לעדכן את ה-Activity בכמות המוקשים האמיתית שהוגרלה
+    public void setDynamicBombsCount(int actualBombs) {
+        runOnUiThread(() -> {
+            this.bombsCount = actualBombs;
+            updateRemainingUI();
         });
     }
 
@@ -280,9 +327,12 @@ public class GameActivity extends AppCompatActivity implements GameView {
         runOnUiThread(() -> {
             overlayTitle.setText(didIWin ? "YOU WIN! 🎉" : "YOU LOSE! 💥");
             overlayTitle.setTextColor(didIWin ? Color.GREEN : Color.RED);
-            overlay.setVisibility(View.VISIBLE);
 
-            // בסיום משחק (ניצחון/הפסד) מנקים את השמירה אם הייתה כזו
+            if (didIWin) {
+                tvCellsRemaining.setText("תאים ללא פצצות: 0");
+            }
+
+            overlay.setVisibility(View.VISIBLE);
             getSharedPreferences("SavedGame", MODE_PRIVATE).edit().putBoolean("hasSaved", false).apply();
         });
     }

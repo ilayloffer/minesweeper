@@ -2,6 +2,12 @@ package com.example.minesweeper;
 
 import android.os.Handler;
 import android.os.Looper;
+import com.google.firebase.database.DataSnapshot;
+import com.google.firebase.database.DatabaseError;
+import com.google.firebase.database.DatabaseReference;
+import com.google.firebase.database.FirebaseDatabase;
+import com.google.firebase.database.ValueEventListener;
+import androidx.annotation.NonNull;
 import java.util.Random;
 
 public class OfflineGameController implements GameController {
@@ -35,6 +41,12 @@ public class OfflineGameController implements GameController {
                 if (mines[i][j]) totalMines++;
             }
         }
+
+        // סינכרון כמות המוקשים שהוגרלו מול ה-Activity
+        if (view instanceof GameActivity) {
+            ((GameActivity) view).setDynamicBombsCount(totalMines);
+        }
+
         for (int i = 0; i < size; i++) {
             for (int j = 0; j < size; j++) {
                 int count = 0;
@@ -99,7 +111,26 @@ public class OfflineGameController implements GameController {
         if (isGameOver || board[r][c].isRevealed() || board[r][c].isFlagged()) return;
         if (board[r][c].getHasMine()) { isGameOver = true; view.showGameOver(false); return; }
         reveal(r, c);
-        if (revealedCount == (size * size) - totalMines) { isGameOver = true; view.showGameOver(true); }
+
+        if (revealedCount == (size * size) - totalMines) {
+            isGameOver = true;
+            view.showGameOver(true);
+
+            // עדכון הלידרבורד של האופליין (wins)
+            if (currentUser != null && !currentUser.isEmpty() && !currentUser.equals("Guest")) {
+                DatabaseReference userRef = FirebaseDatabase.getInstance().getReference("leaderboard").child(currentUser);
+                userRef.child("wins").addListenerForSingleValueEvent(new ValueEventListener() {
+                    @Override
+                    public void onDataChange(@NonNull DataSnapshot snapshot) {
+                        Long currentWins = snapshot.getValue(Long.class);
+                        if (currentWins == null) currentWins = 0L;
+                        userRef.child("wins").setValue(currentWins + 1);
+                        userRef.child("username").setValue(currentUser);
+                    }
+                    @Override public void onCancelled(@NonNull DatabaseError error) {}
+                });
+            }
+        }
     }
 
     private void reveal(int r, int c) {
