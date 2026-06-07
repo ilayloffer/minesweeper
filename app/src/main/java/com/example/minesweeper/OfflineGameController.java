@@ -118,16 +118,32 @@ public class OfflineGameController implements GameController {
 
             // עדכון הלידרבורד של האופליין (wins)
             if (currentUser != null && !currentUser.isEmpty() && !currentUser.equals("Guest")) {
+                // 1. הרפרנס מצביע על השחקן הספציפי בטבלה
                 DatabaseReference userRef = FirebaseDatabase.getInstance().getReference("leaderboard").child(currentUser);
-                userRef.child("wins").addListenerForSingleValueEvent(new ValueEventListener() {
+
+                // 2. מאזינים לכל האובייקט של המשתמש באופן חד פעמי
+                userRef.addListenerForSingleValueEvent(new ValueEventListener() {
                     @Override
                     public void onDataChange(@NonNull DataSnapshot snapshot) {
-                        Long currentWins = snapshot.getValue(Long.class);
-                        if (currentWins == null) currentWins = 0L;
+                        long currentWins = 0;
+
+                        // 3. שליפה בטוחה של הניצחונות הקיימים
+                        if (snapshot.hasChild("wins")) {
+                            Long winsVal = snapshot.child("wins").getValue(Long.class);
+                            if (winsVal != null) {
+                                currentWins = winsVal;
+                            }
+                        }
+
+                        // 4. עדכון נקי של שני השדות תחת השחקן במקביל
                         userRef.child("wins").setValue(currentWins + 1);
                         userRef.child("username").setValue(currentUser);
                     }
-                    @Override public void onCancelled(@NonNull DatabaseError error) {}
+
+                    @Override
+                    public void onCancelled(@NonNull DatabaseError error) {
+                        // תמיד כדאי לשים פה לוג או Toast כדי לדעת אם ה-Rules של Firebase חוסמים אותך
+                    }
                 });
             }
         }
