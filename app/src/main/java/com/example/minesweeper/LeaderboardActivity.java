@@ -48,13 +48,16 @@ public class LeaderboardActivity extends AppCompatActivity {
         leaderboardRef = FirebaseDatabase.getInstance().getReference("leaderboard");
 
         RadioGroup rgSortOptions = findViewById(R.id.rgSortOptions);
-        rgSortOptions.setOnCheckedChangeListener((group, checkedId) -> {
-            if (checkedId == R.id.rbSortOnlineWins) {
-                loadData("onlineWins", false);
-            } else if (checkedId == R.id.rbSortOfflineWins) {
-                loadData("offlineWins", false);
-            } else if (checkedId == R.id.rbSortTime) {
-                loadData("bestOfflineTime", true);
+        rgSortOptions.setOnCheckedChangeListener(new RadioGroup.OnCheckedChangeListener() {
+            @Override
+            public void onCheckedChanged(RadioGroup group, int checkedId) {
+                if (checkedId == R.id.rbSortOnlineWins) {
+                    LeaderboardActivity.this.loadData("onlineWins", false);
+                } else if (checkedId == R.id.rbSortOfflineWins) {
+                    LeaderboardActivity.this.loadData("offlineWins", false);
+                } else if (checkedId == R.id.rbSortTime) {
+                    LeaderboardActivity.this.loadData("bestOfflineTime", true);
+                }
             }
         });
 

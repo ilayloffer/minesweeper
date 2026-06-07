@@ -11,9 +11,12 @@ import android.widget.Toast;
 
 import androidx.appcompat.app.AppCompatActivity;
 
+import com.google.android.gms.tasks.Task;
 import com.google.android.material.textfield.TextInputEditText;
+import com.google.firebase.auth.AuthResult;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseUser;
+import com.google.firebase.database.DataSnapshot;
 import com.google.firebase.database.DatabaseReference;
 import com.google.firebase.database.FirebaseDatabase;
 
@@ -38,62 +41,76 @@ public class LoginActivity extends AppCompatActivity {
         progressBar = findViewById(R.id.progressBarLogin);
 
         ImageButton backBtn = findViewById(R.id.backBtn);
-        backBtn.setOnClickListener(v -> finish());
+        backBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                LoginActivity.this.finish();
+            }
+        });
 
-        btnLogin.setOnClickListener(v -> {
-            String email = etEmail.getText().toString().trim();
-            String pass = etPassword.getText().toString().trim();
-
-            if (email.isEmpty() || pass.isEmpty()) {
-                Toast.makeText(this, "מלא אימייל וסיסמה", Toast.LENGTH_SHORT).show();
-                return;
+        btnLogin.setOnClickListener(new View.OnClickListener() {
+            private void onFailure(Exception e) {
+                progressBar.setVisibility(View.GONE);
+                Toast.makeText(LoginActivity.this,
+                        "שגיאה בטעינת שם משתמש",
+                        Toast.LENGTH_SHORT).show();
             }
 
-            progressBar.setVisibility(View.VISIBLE);
+            private void onSuccess(DataSnapshot snapshot) {
 
-            auth.signInWithEmailAndPassword(email, pass)
-                    .addOnCompleteListener(task -> {
-                        if (!task.isSuccessful()) {
-                            progressBar.setVisibility(View.GONE);
-                            Toast.makeText(this,
-                                    "שגיאה: " + task.getException().getMessage(),
-                                    Toast.LENGTH_LONG).show();
-                            return;
-                        }
+                progressBar.setVisibility(View.GONE);
 
-                        FirebaseUser user = auth.getCurrentUser();
-                        if (user == null) return;
+                String username = snapshot.child("username").getValue(String.class);
 
-                        // 🔥 FETCH USERNAME FROM DB
-                        usersRef.child(user.getUid())
-                                .get()
-                                .addOnSuccessListener(snapshot -> {
+                if (username == null || username.isEmpty()) {
+                    username = "Player";
+                }
 
-                                    progressBar.setVisibility(View.GONE);
+                SharedPreferences prefs =
+                        LoginActivity.this.getSharedPreferences("MinePrefs", MODE_PRIVATE);
+                prefs.edit().putString("username", username).apply();
 
-                                    String username = snapshot.child("username").getValue(String.class);
+                Intent intent = new Intent(LoginActivity.this, MainActivity.class);
+                intent.putExtra("USERNAME", username);
+                LoginActivity.this.startActivity(intent);
+                LoginActivity.this.finish();
 
-                                    if (username == null || username.isEmpty()) {
-                                        username = "Player";
-                                    }
+            }
 
-                                    SharedPreferences prefs =
-                                            getSharedPreferences("MinePrefs", MODE_PRIVATE);
-                                    prefs.edit().putString("username", username).apply();
+            private void onComplete(Task<AuthResult> task) {
+                if (!task.isSuccessful()) {
+                    progressBar.setVisibility(View.GONE);
+                    Toast.makeText(LoginActivity.this,
+                            "שגיאה: " + task.getException().getMessage(),
+                            Toast.LENGTH_LONG).show();
+                    return;
+                }
 
-                                    Intent intent = new Intent(LoginActivity.this, MainActivity.class);
-                                    intent.putExtra("USERNAME", username);
-                                    startActivity(intent);
-                                    finish();
+                FirebaseUser user = auth.getCurrentUser();
+                if (user == null) return;
 
-                                })
-                                .addOnFailureListener(e -> {
-                                    progressBar.setVisibility(View.GONE);
-                                    Toast.makeText(this,
-                                            "שגיאה בטעינת שם משתמש",
-                                            Toast.LENGTH_SHORT).show();
-                                });
-                    });
+                // 🔥 FETCH USERNAME FROM DB
+                Task<DataSnapshot> dataSnapshotTask = usersRef.child(user.getUid())
+                        .get()
+                        .addOnSuccessListener(this::onSuccess)
+                        .addOnFailureListener(this::onFailure);
+            }
+
+            @Override
+            public void onClick(View v) {
+                String email = etEmail.getText().toString().trim();
+                String pass = etPassword.getText().toString().trim();
+
+                if (email.isEmpty() || pass.isEmpty()) {
+                    Toast.makeText(LoginActivity.this, "מלא אימייל וסיסמה", Toast.LENGTH_SHORT).show();
+                    return;
+                }
+
+                progressBar.setVisibility(View.VISIBLE);
+
+                Task<AuthResult> authResultTask = auth.signInWithEmailAndPassword(email, pass)
+                        .addOnCompleteListener(this::onComplete);
+            }
         });
     }
 }

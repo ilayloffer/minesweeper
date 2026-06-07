@@ -95,25 +95,31 @@ public class SettingsActivity extends AppCompatActivity {
         });
 
         // בחירת תמונה מהרשימה
-        pickImageBtn.setOnClickListener(v -> {
-            Intent pick = new Intent(Intent.ACTION_OPEN_DOCUMENT);
-            pick.addCategory(Intent.CATEGORY_OPENABLE);
-            pick.setType("image/*");
-            pick.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-            pick.addFlags(Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
+        pickImageBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                Intent pick = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+                pick.addCategory(Intent.CATEGORY_OPENABLE);
+                pick.setType("image/*");
+                pick.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                pick.addFlags(Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
 
-            pickImageLauncher.launch(pick);
+                pickImageLauncher.launch(pick);
+            }
         });
 
         // כפתור החלה
-        applyBtn.setOnClickListener(v -> {
-            Intent result = new Intent();
-            result.putExtra("theme", chosenTheme);
-            if (chosenBgUri != null) {
-                result.putExtra("bgUri", chosenBgUri);
+        applyBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                Intent result = new Intent();
+                result.putExtra("theme", chosenTheme);
+                if (chosenBgUri != null) {
+                    result.putExtra("bgUri", chosenBgUri);
+                }
+                SettingsActivity.this.setResult(RESULT_OK, result);
+                SettingsActivity.this.finish();
             }
-            setResult(RESULT_OK, result);
-            finish();
         });
     }
 }

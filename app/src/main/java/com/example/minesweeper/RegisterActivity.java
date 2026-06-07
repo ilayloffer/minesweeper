@@ -12,9 +12,12 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
 
+import com.google.android.gms.tasks.OnCompleteListener;
 import com.google.android.gms.tasks.OnFailureListener;
 import com.google.android.gms.tasks.OnSuccessListener;
+import com.google.android.gms.tasks.Task;
 import com.google.android.material.textfield.TextInputEditText;
+import com.google.firebase.auth.AuthResult;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseUser;
 import com.google.firebase.auth.UserProfileChangeRequest;
@@ -53,8 +56,18 @@ public class RegisterActivity extends AppCompatActivity {
         ImageButton backBtn = findViewById(R.id.backBtn);
 
         // Listeners
-        backBtn.setOnClickListener(v -> finish());
-        btnRegister.setOnClickListener(v -> checkUsernameAndRegister());
+        backBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                RegisterActivity.this.finish();
+            }
+        });
+        btnRegister.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                RegisterActivity.this.checkUsernameAndRegister();
+            }
+        });
     }
 
     private void checkUsernameAndRegister() {
@@ -113,36 +126,38 @@ public class RegisterActivity extends AppCompatActivity {
 
         // 1. Create User in Auth
         auth.createUserWithEmailAndPassword(email, pass)
-                .addOnCompleteListener(task -> {
-                    if (task.isSuccessful()) {
-                        FirebaseUser user = auth.getCurrentUser();
-                        if (user != null) {
-                            // 2. CRITICAL FIX: Update the Auth Profile with the Username immediately
-                            UserProfileChangeRequest profileUpdates = new UserProfileChangeRequest.Builder()
-                                    .setDisplayName(username)
-                                    .build();
+                .addOnCompleteListener(new OnCompleteListener<AuthResult>() {
+                    @Override
+                    public void onComplete(@NonNull Task<AuthResult> task) {
+                        if (task.isSuccessful()) {
+                            FirebaseUser user = auth.getCurrentUser();
+                            if (user != null) {
+                                // 2. CRITICAL FIX: Update the Auth Profile with the Username immediately
+                                UserProfileChangeRequest profileUpdates = new UserProfileChangeRequest.Builder()
+                                        .setDisplayName(username)
+                                        .build();
 
-                            user.updateProfile(profileUpdates)
-                                    .addOnCompleteListener(profileTask -> {
-                                        if (profileTask.isSuccessful()) {
-                                            // 3. Save to DB only after profile is updated
-                                            saveUserToRealtimeDB(user.getUid(), email, username);
-                                            Toast.makeText(this, "BBB", Toast.LENGTH_SHORT).show();
-                                        } else {
-                                            progressBar.setVisibility(View.GONE);
-                                            Toast.makeText(this, "Failed to set username", Toast.LENGTH_SHORT).show();
-                                        }
-                                    });
-                            Toast.makeText(this, "AAAA", Toast.LENGTH_SHORT).show();
-                        }
-                        else {
+                                Task<Void> voidTask = user.updateProfile(profileUpdates)
+                                        .addOnCompleteListener((Task<Void> profileTask) -> {
+                                            if (profileTask.isSuccessful()) {
+                                                // 3. Save to DB only after profile is updated
+                                                RegisterActivity.this.saveUserToRealtimeDB(user.getUid(), email, username);
+                                                Toast.makeText(RegisterActivity.this, "BBB", Toast.LENGTH_SHORT).show();
+                                            } else {
+                                                progressBar.setVisibility(View.GONE);
+                                                Toast.makeText(RegisterActivity.this, "Failed to set username", Toast.LENGTH_SHORT).show();
+                                            }
+                                        });
+                                Toast.makeText(RegisterActivity.this, "AAAA", Toast.LENGTH_SHORT).show();
+                            } else {
                                 progressBar.setVisibility(View.GONE);
-                                Toast.makeText(this, "User is null!", Toast.LENGTH_LONG).show();
+                                Toast.makeText(RegisterActivity.this, "User is null!", Toast.LENGTH_LONG).show();
+                            }
+                        } else {
+                            progressBar.setVisibility(View.GONE);
+                            String error = task.getException() != null ? task.getException().getMessage() : "Error";
+                            Toast.makeText(RegisterActivity.this, "שגיאה: " + error, Toast.LENGTH_LONG).show();
                         }
-                    } else {
-                        progressBar.setVisibility(View.GONE);
-                        String error = task.getException() != null ? task.getException().getMessage() : "Error";
-                        Toast.makeText(this, "שגיאה: " + error, Toast.LENGTH_LONG).show();
                     }
                 });
     }

@@ -70,14 +70,49 @@ public class GameActivity extends AppCompatActivity implements GameView {
         bindViews();
         readIntent();
 
-        if (isOnline) {
-            initOnlineGame();
+        // בדיקה האם הגענו לפה דרך מנגנון ה-Matchmaking החדש
+        Intent intent = getIntent();
+        String matchmakingGameId = intent.getStringExtra("gameId");
+
+        if (matchmakingGameId != null) {
+            // תרחיש אונליין דרך ה-Matchmaking החדש
+            isOnline = true;
+            roomId = matchmakingGameId;
+            boolean isPlayer1 = intent.getBooleanExtra("isPlayer1", true);
+
+            btnExitSave.setVisibility(View.GONE);
+            if (chatContainer != null) {
+                chatContainer.setVisibility(View.VISIBLE);
+            }
+
+            roomRef = FirebaseDatabase.getInstance().getReference("rooms").child(roomId);
+            chatRef = FirebaseDatabase.getInstance().getReference("games").child(roomId).child("chat");
+
+            setupDisconnectHook();
+            setupChat();
+
+            // אתחול הקונטרולר הקיים בפרויקט שלך עם הפרמטרים הנכונים
+            statusText.setText("Game started! Playing online...");
+            controller = new OnlineGameController(this, size, roomId, currentUser, isPlayer1 ? "Player 2" : "Player 1");
+            createBoardUI();
+
         } else {
-            initOfflineGame();
+            // התנהגות רגילה (הקוד המקורי שלך עבור אופליין או אונליין דרך קוד חדר)
+            if (isOnline) {
+                initOnlineGame();
+            } else {
+                initOfflineGame();
+            }
         }
 
-        btnHome.setOnClickListener(v -> finish());
+        btnHome.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                GameActivity.this.finish();
+            }
+        });
     }
+
 
     @Override
     protected void onDestroy() {
@@ -128,7 +163,12 @@ public class GameActivity extends AppCompatActivity implements GameView {
         }
 
         btnExitSave.setVisibility(View.VISIBLE);
-        btnExitSave.setOnClickListener(v -> saveAndExitOffline());
+        btnExitSave.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                GameActivity.this.saveAndExitOffline();
+            }
+        });
 
         controller = new OfflineGameController(this, size, currentUser);
         createBoardUI();
@@ -206,6 +246,12 @@ public class GameActivity extends AppCompatActivity implements GameView {
 
     private void listenForRoomChanges() {
         roomListener = new ValueEventListener() {
+            private void run() {
+                statusText.setText("Game started vs " + otherPlayer);
+                controller = new OnlineGameController(GameActivity.this, size, roomId, currentUser, otherPlayer);
+                createBoardUI();
+            }
+
             @Override
             public void onDataChange(@NonNull DataSnapshot snapshot) {
                 String host = snapshot.child("host").getValue(String.class);
@@ -221,11 +267,7 @@ public class GameActivity extends AppCompatActivity implements GameView {
                     gameStarted = true;
                     otherPlayer = currentUser.equals(host) ? guest : host;
 
-                    runOnUiThread(() -> {
-                        statusText.setText("Game started vs " + otherPlayer);
-                        controller = new OnlineGameController(GameActivity.this, size, roomId, currentUser, otherPlayer);
-                        createBoardUI();
-                    });
+                    runOnUiThread(this::run);
                 }
             }
             @Override public void onCancelled(@NonNull DatabaseError error) {}
@@ -245,10 +287,18 @@ public class GameActivity extends AppCompatActivity implements GameView {
                 btn.setLayoutParams(new LinearLayout.LayoutParams(100, 100));
 
                 final int r = i, c = j;
-                btn.setOnClickListener(v -> { if (controller != null) controller.onCellClicked(r, c); });
-                btn.setOnLongClickListener(v -> {
-                    if (controller != null) controller.onCellLongClicked(r, c);
-                    return true;
+                btn.setOnClickListener(new View.OnClickListener() {
+                    @Override
+                    public void onClick(View v) {
+                        if (controller != null) controller.onCellClicked(r, c);
+                    }
+                });
+                btn.setOnLongClickListener(new View.OnLongClickListener() {
+                    @Override
+                    public boolean onLongClick(View v) {
+                        if (controller != null) controller.onCellLongClicked(r, c);
+                        return true;
+                    }
                 });
                 buttons[i][j] = btn;
                 row.addView(btn);
@@ -261,29 +311,37 @@ public class GameActivity extends AppCompatActivity implements GameView {
 
     @Override
     public void updateStatus(String status) {
-        runOnUiThread(() -> statusText.setText(status));
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                statusText.setText(status);
+            }
+        });
     }
 
     @Override
     public void updateCell(int r, int c, Cell cell) {
-        runOnUiThread(() -> {
-            Button btn = buttons[r][c];
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                Button btn = buttons[r][c];
 
-            if (cell.isRevealed()) {
-                btn.setEnabled(false);
-                if (cell.getHasMine()) {
-                    btn.setText("💣");
-                    btn.setBackgroundColor(Color.RED);
+                if (cell.isRevealed()) {
+                    btn.setEnabled(false);
+                    if (cell.getHasMine()) {
+                        btn.setText("💣");
+                        btn.setBackgroundColor(Color.RED);
+                    } else {
+                        btn.setBackgroundColor(Color.WHITE);
+                        int n = cell.getNeighborMines();
+                        btn.setText(n > 0 ? String.valueOf(n) : "");
+                    }
                 } else {
-                    btn.setBackgroundColor(Color.WHITE);
-                    int n = cell.getNeighborMines();
-                    btn.setText(n > 0 ? String.valueOf(n) : "");
+                    btn.setText(cell.isFlagged() ? "🚩" : "");
                 }
-            } else {
-                btn.setText(cell.isFlagged() ? "🚩" : "");
-            }
 
-            updateRemainingUI();
+                GameActivity.this.updateRemainingUI();
+            }
         });
     }
 
@@ -311,35 +369,51 @@ public class GameActivity extends AppCompatActivity implements GameView {
 
     // פונקציה המאפשרת לבקרים לעדכן את ה-Activity בכמות המוקשים האמיתית שהוגרלה
     public void setDynamicBombsCount(int actualBombs) {
-        runOnUiThread(() -> {
-            this.bombsCount = actualBombs;
-            updateRemainingUI();
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                GameActivity.this.bombsCount = actualBombs;
+                GameActivity.this.updateRemainingUI();
+            }
         });
     }
 
     @Override
     public void setBoardEnabled(boolean enabled) {
-        runOnUiThread(() -> boardContainer.setAlpha(enabled ? 1.0f : 0.5f));
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                boardContainer.setAlpha(enabled ? 1.0f : 0.5f);
+            }
+        });
     }
 
     @Override
     public void showGameOver(boolean didIWin) {
-        runOnUiThread(() -> {
-            overlayTitle.setText(didIWin ? "YOU WIN! 🎉" : "YOU LOSE! 💥");
-            overlayTitle.setTextColor(didIWin ? Color.GREEN : Color.RED);
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                overlayTitle.setText(didIWin ? "YOU WIN! 🎉" : "YOU LOSE! 💥");
+                overlayTitle.setTextColor(didIWin ? Color.GREEN : Color.RED);
 
-            if (didIWin) {
-                tvCellsRemaining.setText("תאים ללא פצצות: 0");
+                if (didIWin) {
+                    tvCellsRemaining.setText("תאים ללא פצצות: 0");
+                }
+
+                overlay.setVisibility(View.VISIBLE);
+                GameActivity.this.getSharedPreferences("SavedGame", MODE_PRIVATE).edit().putBoolean("hasSaved", false).apply();
             }
-
-            overlay.setVisibility(View.VISIBLE);
-            getSharedPreferences("SavedGame", MODE_PRIVATE).edit().putBoolean("hasSaved", false).apply();
         });
     }
 
     @Override
     public void showMessage(String msg) {
-        runOnUiThread(() -> Toast.makeText(this, msg, Toast.LENGTH_SHORT).show());
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                Toast.makeText(GameActivity.this, msg, Toast.LENGTH_SHORT).show();
+            }
+        });
     }
 
     private void removePlayerFromRoom() {
@@ -391,11 +465,14 @@ public class GameActivity extends AppCompatActivity implements GameView {
             chatRef.addValueEventListener(chatListener);
         }
 
-        btnSendChat.setOnClickListener(v -> {
-            String text = etChatMessage.getText().toString().trim();
-            if (!text.isEmpty() && chatRef != null) {
-                chatRef.push().setValue(new ChatMessage(currentUser != null ? currentUser : "Player", text));
-                etChatMessage.setText("");
+        btnSendChat.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                String text = etChatMessage.getText().toString().trim();
+                if (!text.isEmpty() && chatRef != null) {
+                    chatRef.push().setValue(new ChatMessage(currentUser != null ? currentUser : "Player", text));
+                    etChatMessage.setText("");
+                }
             }
         });
     }

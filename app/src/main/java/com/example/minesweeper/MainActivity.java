@@ -1,6 +1,7 @@
 package com.example.minesweeper;
 
 import android.app.AlertDialog;
+import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Bundle;
@@ -15,6 +16,8 @@ import android.widget.TextView;
 import android.widget.Toast;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
+
+import com.google.android.gms.tasks.Task;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseUser;
 import com.google.firebase.database.DataSnapshot;
@@ -68,60 +71,81 @@ public class MainActivity extends AppCompatActivity {
             @Override public void onStopTrackingTouch(SeekBar seekBar) {}
         });
 
-        startBtn.setOnClickListener(v -> {
-            int size = difficultySeek.getProgress() + 5;
-            startGame(size, false);
-        });
-
-        btnContinue.setOnClickListener(v -> {
-            SharedPreferences sp = getSharedPreferences("SavedGame", MODE_PRIVATE);
-            int savedSize = sp.getInt("size", 10);
-            Intent intent = new Intent(this, GameActivity.class);
-            intent.putExtra("size", savedSize);
-            intent.putExtra("isOnline", false);
-            intent.putExtra("loadSaved", true);
-            intent.putExtra("currentUser", getPlayerName());
-            startActivity(intent);
-        });
-
-        btnOnlineMatch.setOnClickListener(v -> {
-            if (mAuth.getCurrentUser() == null) {
-                startActivity(new Intent(this, LoginActivity.class));
-            } else {
-                showOnlineOptionsDialog();
+        startBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                int size = difficultySeek.getProgress() + 5;
+                MainActivity.this.startGame(size, false);
             }
         });
 
-        btnLeaderboard.setOnClickListener(v -> {
-            Intent i = new Intent(this, LeaderboardActivity.class);
-            i.putExtra("currentUser", getPlayerName());
-            startActivity(i);
+        btnContinue.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                SharedPreferences sp = MainActivity.this.getSharedPreferences("SavedGame", MODE_PRIVATE);
+                int savedSize = sp.getInt("size", 10);
+                Intent intent = new Intent(MainActivity.this, GameActivity.class);
+                intent.putExtra("size", savedSize);
+                intent.putExtra("isOnline", false);
+                intent.putExtra("loadSaved", true);
+                intent.putExtra("currentUser", MainActivity.this.getPlayerName());
+                MainActivity.this.startActivity(intent);
+            }
         });
 
-        btnInviteFriend.setOnClickListener(v -> shareGame());
+        btnOnlineMatch.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                if (mAuth.getCurrentUser() == null) {
+                    MainActivity.this.startActivity(new Intent(MainActivity.this, LoginActivity.class));
+                } else {
+                    MainActivity.this.showOnlineOptionsDialog();
+                }
+            }
+        });
+
+        btnLeaderboard.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                Intent i = new Intent(MainActivity.this, LeaderboardActivity.class);
+                i.putExtra("currentUser", MainActivity.this.getPlayerName());
+                MainActivity.this.startActivity(i);
+            }
+        });
+
+        btnInviteFriend.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                MainActivity.this.shareGame();
+            }
+        });
     }
 
-    // --- הדיאלוג הראשי (כעת מכיל רק 3 אופציות) ---
+    // --- הדיאלוג הראשי (כעת מכיל רק 3 אופציות ומחבר את ה-Matchmaking) ---
     private void showOnlineOptionsDialog() {
         String[] options = {
                 "1. Search for Players 🔍",
                 "2. Game Code / Barcode 🔑",
-                "3. Friends List 👥" // לחיצה כאן תציג את החברים ואת כפתור ההוספה
+                "3. Friends List 👥"
         };
 
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
         builder.setTitle("Online Game Options");
-        builder.setItems(options, (dialog, which) -> {
-            switch (which) {
-                case 0:
-                    Toast.makeText(this, "Searching for online match...", Toast.LENGTH_SHORT).show();
-                    break;
-                case 1:
-                    showCodeAndBarcodeDialog();
-                    break;
-                case 2:
-                    loadAndShowFriendsDialog();
-                    break;
+        builder.setItems(options, new DialogInterface.OnClickListener() {
+            @Override
+            public void onClick(DialogInterface dialog, int which) {
+                switch (which) {
+                    case 0:
+                        // חיבור הפונקציה של ה-Matchmaking בלחיצה על החיפוש!
+                        MainActivity.this.checkMatchmaking();
+                        break;
+                    case 1:
+                        MainActivity.this.showCodeAndBarcodeDialog();
+                        break;
+                    case 2:
+                        MainActivity.this.loadAndShowFriendsDialog();
+                        break;
+                }
             }
         });
         builder.setNegativeButton("Cancel", null);
@@ -143,24 +167,33 @@ public class MainActivity extends AppCompatActivity {
 
         Button btnScanQR = new Button(this);
         btnScanQR.setText("Scan QR / Barcode 📷");
-        btnScanQR.setOnClickListener(v -> {
-            Toast.makeText(this, "Opening Camera Scanner...", Toast.LENGTH_SHORT).show();
+        btnScanQR.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                Toast.makeText(MainActivity.this, "Opening Camera Scanner...", Toast.LENGTH_SHORT).show();
+            }
         });
         layout.addView(btnScanQR);
 
         builder.setView(layout);
 
-        builder.setPositiveButton("Join Room", (dialog, which) -> {
-            String roomCode = inputCode.getText().toString().trim();
-            if (!roomCode.isEmpty()) {
-                checkAndJoinRoom(roomCode);
-            } else {
-                Toast.makeText(this, "Please enter a valid code", Toast.LENGTH_SHORT).show();
+        builder.setPositiveButton("Join Room", new DialogInterface.OnClickListener() {
+            @Override
+            public void onClick(DialogInterface dialog, int which) {
+                String roomCode = inputCode.getText().toString().trim();
+                if (!roomCode.isEmpty()) {
+                    MainActivity.this.checkAndJoinRoom(roomCode);
+                } else {
+                    Toast.makeText(MainActivity.this, "Please enter a valid code", Toast.LENGTH_SHORT).show();
+                }
             }
         });
 
-        builder.setNeutralButton("Create New Code", (dialog, which) -> {
-            createNewRoom();
+        builder.setNeutralButton("Create New Code", new DialogInterface.OnClickListener() {
+            @Override
+            public void onClick(DialogInterface dialog, int which) {
+                MainActivity.this.createNewRoom();
+            }
         });
 
         builder.setNegativeButton("Cancel", null);
@@ -179,19 +212,25 @@ public class MainActivity extends AppCompatActivity {
         codeDialog.setTitle("Room Created Successfully! 🎉");
         codeDialog.setMessage("Give this code to your friend:\n\n👉 " + roomCode + " 👈\n\nClick 'Start' when they are ready to connect.");
 
-        codeDialog.setPositiveButton("Start Game", (dialog, which) -> {
-            Intent i = new Intent(MainActivity.this, GameActivity.class);
-            i.putExtra("isOnline", true);
-            i.putExtra("roomCode", roomCode);
-            i.putExtra("role", "host");
-            i.putExtra("size", 10);
-            i.putExtra("currentUser", getPlayerName());
-            startActivity(i);
+        codeDialog.setPositiveButton("Start Game", new DialogInterface.OnClickListener() {
+            @Override
+            public void onClick(DialogInterface dialog, int which) {
+                Intent i = new Intent(MainActivity.this, GameActivity.class);
+                i.putExtra("isOnline", true);
+                i.putExtra("roomCode", roomCode);
+                i.putExtra("role", "host");
+                i.putExtra("size", 10);
+                i.putExtra("currentUser", MainActivity.this.getPlayerName());
+                MainActivity.this.startActivity(i);
+            }
         });
 
-        codeDialog.setNegativeButton("Cancel Room", (dialog, which) -> {
-            roomRef.removeValue();
-            Toast.makeText(MainActivity.this, "Room cancelled", Toast.LENGTH_SHORT).show();
+        codeDialog.setNegativeButton("Cancel Room", new DialogInterface.OnClickListener() {
+            @Override
+            public void onClick(DialogInterface dialog, int which) {
+                roomRef.removeValue();
+                Toast.makeText(MainActivity.this, "Room cancelled", Toast.LENGTH_SHORT).show();
+            }
         });
 
         codeDialog.setCancelable(false);
@@ -229,12 +268,15 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
-    // --- אופציה 3: רשימת חברים + כפתור הוספת חבר מובנה בפנים ---
+    // --- אופציה 3: רשימת חברים (מתוקנת ללא כפל משתנים) ---
     private void loadAndShowFriendsDialog() {
         FirebaseUser user = mAuth.getCurrentUser();
         if (user == null) return;
 
-        mDatabase.child("users").child(user.getUid()).child("friends").addListenerForSingleValueEvent(new ValueEventListener() {
+        // הגדרת נתיב רפרנס יחיד ומדויק לתוך רשימת החברים
+        DatabaseReference friendsRef = mDatabase.child("users").child(user.getUid()).child("friends");
+
+        friendsRef.addListenerForSingleValueEvent(new ValueEventListener() {
             @Override
             public void onDataChange(@NonNull DataSnapshot snapshot) {
                 List<String> friendsList = new ArrayList<>();
@@ -249,21 +291,24 @@ public class MainActivity extends AppCompatActivity {
                 builder.setTitle("Friends List 👥");
 
                 if (friendsList.isEmpty()) {
-                    // אם הרשימה ריקה, נציג טקסט מתאים
                     builder.setMessage("Your friends list is empty.");
                 } else {
-                    // אם יש חברים, נציג אותם לבחירה
                     String[] friendsArray = friendsList.toArray(new String[0]);
-                    builder.setItems(friendsArray, (dialog, which) -> {
-                        String selectedFriend = friendsArray[which];
-                        Toast.makeText(MainActivity.this, "Inviting " + selectedFriend + "...", Toast.LENGTH_SHORT).show();
-                        createNewRoom();
+                    builder.setItems(friendsArray, new DialogInterface.OnClickListener() {
+                        @Override
+                        public void onClick(DialogInterface dialog, int which) {
+                            String selectedFriend = friendsArray[which];
+                            Toast.makeText(MainActivity.this, "Inviting " + selectedFriend + "...", Toast.LENGTH_SHORT).show();
+                            createNewRoom();
+                        }
                     });
                 }
 
-                // הוספת כפתור "הוסף חבר חדש" בתחתית הדיאלוג של הרשימה!
-                builder.setNeutralButton("Add Friend ➕", (dialog, which) -> {
-                    showAddFriendDialog();
+                builder.setNeutralButton("Add Friend ➕", new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        showAddFriendDialog();
+                    }
                 });
 
                 builder.setNegativeButton("Close", null);
@@ -277,7 +322,7 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
-    // --- חלון הוספת חבר (נפתח כעת רק מתוך רשימת החברים) ---
+    // --- חלון הוספת חבר ---
     private void showAddFriendDialog() {
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
         builder.setTitle("Add New Friend");
@@ -286,26 +331,39 @@ public class MainActivity extends AppCompatActivity {
         input.setHint("Enter Friend's Username");
         builder.setView(input);
 
-        builder.setPositiveButton("Add", (dialog, which) -> {
-            String friendName = input.getText().toString().trim();
-            FirebaseUser user = mAuth.getCurrentUser();
+        builder.setPositiveButton("Add", new DialogInterface.OnClickListener() {
+            @Override
+            public void onClick(DialogInterface dialog, int which) {
+                String friendName = input.getText().toString().trim();
+                FirebaseUser user = mAuth.getCurrentUser();
 
-            if (!friendName.isEmpty() && user != null) {
-                mDatabase.child("users").child(user.getUid()).child("friends").push().setValue(friendName)
-                        .addOnCompleteListener(task -> {
-                            if (task.isSuccessful()) {
-                                Toast.makeText(MainActivity.this, friendName + " added to your friends list!", Toast.LENGTH_SHORT).show();
-                            } else {
-                                Toast.makeText(MainActivity.this, "Failed to add friend", Toast.LENGTH_SHORT).show();
-                            }
-                        });
-            } else {
-                Toast.makeText(this, "Name cannot be empty", Toast.LENGTH_SHORT).show();
+                if (!friendName.isEmpty() && user != null) {
+                    mDatabase.child("users").child(user.getUid()).child("friends").push().setValue(friendName)
+                            .addOnCompleteListener((Task<Void> task) -> {
+                                if (task.isSuccessful()) {
+                                    Toast.makeText(MainActivity.this, friendName + " added to your friends list!", Toast.LENGTH_SHORT).show();
+                                } else {
+                                    Toast.makeText(MainActivity.this, "Failed to add friend", Toast.LENGTH_SHORT).show();
+                                }
+                            });
+                } else {
+                    Toast.makeText(MainActivity.this, "Name cannot be empty", Toast.LENGTH_SHORT).show();
+                }
             }
         });
 
-        builder.setNeutralButton("Share Invite Link 🔗", (dialog, which) -> shareGame());
-        builder.setNegativeButton("Cancel", (dialog, which) -> loadAndShowFriendsDialog()); // חוזר חזרה לרשימה
+        builder.setNeutralButton("Share Invite Link 🔗", new DialogInterface.OnClickListener() {
+            @Override
+            public void onClick(DialogInterface dialog, int which) {
+                MainActivity.this.shareGame();
+            }
+        });
+        builder.setNegativeButton("Cancel", new DialogInterface.OnClickListener() {
+            @Override
+            public void onClick(DialogInterface dialog, int which) {
+                MainActivity.this.loadAndShowFriendsDialog();
+            }
+        });
         builder.show();
     }
 
@@ -406,5 +464,73 @@ public class MainActivity extends AppCompatActivity {
                 Toast.makeText(this, "You were invited by: " + invitedBy, Toast.LENGTH_LONG).show();
             }
         }
+    }
+
+    private void checkMatchmaking() {
+        com.google.firebase.auth.FirebaseUser currentUser = com.google.firebase.auth.FirebaseAuth.getInstance().getCurrentUser();
+        if (currentUser == null) return;
+
+        String currentUserId = currentUser.getUid();
+        String currentUserName = currentUser.getDisplayName() != null ? currentUser.getDisplayName() : "שחקן";
+
+        com.google.firebase.database.DatabaseReference matchRef = com.google.firebase.database.FirebaseDatabase.getInstance().getReference("matchmaking").child("waiting_player");
+        com.google.firebase.database.DatabaseReference gamesRef = com.google.firebase.database.FirebaseDatabase.getInstance().getReference("games");
+
+        matchRef.addListenerForSingleValueEvent(new com.google.firebase.database.ValueEventListener() {
+            @Override
+            public void onDataChange(com.google.firebase.database.DataSnapshot snapshot) {
+                if (!snapshot.exists()) {
+                    String newGameId = gamesRef.push().getKey();
+
+                    java.util.HashMap<String, Object> waitingData = new java.util.HashMap<>();
+                    waitingData.put("playerId", currentUserId);
+                    waitingData.put("playerName", currentUserName);
+                    waitingData.put("gameId", newGameId);
+
+                    matchRef.setValue(waitingData);
+
+                    android.widget.Toast.makeText(MainActivity.this, "מחפש שחקן נוסף...", android.widget.Toast.LENGTH_SHORT).show();
+                    waitForOpponent(newGameId);
+
+                } else {
+                    String existingGameId = snapshot.child("gameId").getValue(String.class);
+                    String player1Id = snapshot.child("playerId").getValue(String.class);
+
+                    matchRef.removeValue();
+
+                    gamesRef.child(existingGameId).child("player2").setValue(currentUserId);
+                    gamesRef.child(existingGameId).child("status").setValue("playing");
+                    gamesRef.child(existingGameId).child("turn").setValue(player1Id);
+
+                    Intent intent = new Intent(MainActivity.this, GameActivity.class);
+                    intent.putExtra("gameId", existingGameId);
+                    intent.putExtra("isPlayer1", false);
+                    startActivity(intent);
+                }
+            }
+
+            @Override
+            public void onCancelled(com.google.firebase.database.DatabaseError error) {}
+        });
+    }
+
+    private void waitForOpponent(String gameId) {
+        com.google.firebase.database.DatabaseReference gameRef = com.google.firebase.database.FirebaseDatabase.getInstance().getReference("games").child(gameId);
+        gameRef.child("player2").addValueEventListener(new com.google.firebase.database.ValueEventListener() {
+            @Override
+            public void onDataChange(com.google.firebase.database.DataSnapshot snapshot) {
+                if (snapshot.exists()) {
+                    gameRef.child("player2").removeEventListener(this);
+
+                    Intent intent = new Intent(MainActivity.this, GameActivity.class);
+                    intent.putExtra("gameId", gameId);
+                    intent.putExtra("isPlayer1", true);
+                    startActivity(intent);
+                }
+            }
+
+            @Override
+            public void onCancelled(com.google.firebase.database.DatabaseError error) {}
+        });
     }
 }

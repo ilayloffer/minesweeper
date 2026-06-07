@@ -1,6 +1,8 @@
 package com.example.minesweeper;
 
 import android.os.CountDownTimer;
+
+import com.google.android.gms.tasks.OnSuccessListener;
 import com.google.firebase.database.*;
 import java.util.HashMap;
 import java.util.Map;
@@ -43,9 +45,12 @@ public class OnlineGameController implements GameController {
     }
 
     private void listenToFirebase() {
-        gameRef.get().addOnSuccessListener(snapshot -> {
-            if (!snapshot.exists()) {
-                createNewGame();
+        gameRef.get().addOnSuccessListener(new OnSuccessListener<DataSnapshot>() {
+            @Override
+            public void onSuccess(DataSnapshot snapshot) {
+                if (!snapshot.exists()) {
+                    OnlineGameController.this.createNewGame();
+                }
             }
         });
 
