@@ -1,5 +1,7 @@
 package com.example.minesweeper;
 
+import android.content.Intent;
+import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.widget.RadioGroup;
 import android.widget.TextView;
@@ -61,7 +63,7 @@ public class LeaderboardActivity extends AppCompatActivity {
             }
         });
 
-        // טעינה ראשונית
+        // טעינה ראשונית לפי ניצחונות אונליין
         loadData("onlineWins", false);
     }
 
@@ -70,7 +72,6 @@ public class LeaderboardActivity extends AppCompatActivity {
             leaderboardRef.removeEventListener(currentListener);
         }
 
-        // מעדכנים את האדפטר באיזה סנן אנחנו משתמשים עכשיו כדי שיציג את המידע הנכון
         adapter.setCurrentFilter(orderByField);
 
         currentListener = leaderboardRef.orderByChild(orderByField)
@@ -84,7 +85,7 @@ public class LeaderboardActivity extends AppCompatActivity {
                             if (score != null) {
                                 score.setPlayerName(doc.getKey());
 
-                                // --- לוגיקת הסינון: מדלגים על שחקנים עם 0 בקטגוריה המבוקשת ---
+                                // מדלגים על שחקנים עם 0 בקטגוריה המבוקשת
                                 if (orderByField.equals("onlineWins") && score.getOnlineWins() == 0) continue;
                                 if (orderByField.equals("offlineWins") && score.getOfflineWins() == 0) continue;
                                 if (orderByField.equals("bestOfflineTime") && score.getBestOfflineTime() == 0) continue;
@@ -93,7 +94,7 @@ public class LeaderboardActivity extends AppCompatActivity {
                             }
                         }
 
-                        // היפוך הרשימה אם צריך מהגבוה לנמוך
+                        // מיון רגיל או הפוך בהתאם לדרישה
                         if (!isAscending) {
                             Collections.reverse(fullList);
                         }
@@ -108,13 +109,21 @@ public class LeaderboardActivity extends AppCompatActivity {
                             }
                         }
 
+                        // הצגת הסטטיסטיקות של השחקן הנוכחי בראש המסך
                         if (myScore != null) {
                             String timeDisplay = myScore.getBestOfflineTime() == 0 ? "N/A" : myScore.getBestOfflineTime() + "s";
                             String myStats = "Place: #" + myRank + " | " + currentUser + "\n" +
                                     "Online: " + myScore.getOnlineWins() + " | Offline: " + myScore.getOfflineWins() + " | Time: " + timeDisplay;
                             tvMyRankDetails.setText(myStats);
                         } else {
-                            tvMyRankDetails.setText(currentUser + " - Unranked in this category.");
+                            // גיבוי: אם השחקן אופליין/אורח ולא רשום בענן, נציג לו את הנתונים שלו מה-SharedPreferences המקומיים
+                            SharedPreferences scoreSp = getSharedPreferences("OfflineScores", MODE_PRIVATE);
+                            int localBestTime = scoreSp.getInt("high_score", 0);
+                            int localOfflineWins = scoreSp.getInt("offline_wins", 0);
+
+                            String timeDisplay = localBestTime == 0 ? "N/A" : localBestTime + "s";
+                            tvMyRankDetails.setText(currentUser + " (Local Statistics):\n" +
+                                    "Offline Wins: " + localOfflineWins + " | Best Time: " + timeDisplay + " (Unranked in Cloud)");
                         }
 
                         scoresList.clear();

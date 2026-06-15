@@ -121,7 +121,7 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
-    // --- הדיאלוג הראשי (כעת מכיל רק 3 אופציות ומחבר את ה-Matchmaking) ---
+    // --- הדיאלוג הראשי (מכיל 3 אופציות ומחבר את ה-Matchmaking) ---
     private void showOnlineOptionsDialog() {
         String[] options = {
                 "1. Search for Players 🔍",
@@ -136,7 +136,6 @@ public class MainActivity extends AppCompatActivity {
             public void onClick(DialogInterface dialog, int which) {
                 switch (which) {
                     case 0:
-                        // חיבור הפונקציה של ה-Matchmaking בלחיצה על החיפוש!
                         MainActivity.this.checkMatchmaking();
                         break;
                     case 1:
@@ -170,7 +169,14 @@ public class MainActivity extends AppCompatActivity {
         btnScanQR.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                Toast.makeText(MainActivity.this, "Opening Camera Scanner...", Toast.LENGTH_SHORT).show();
+                // תיקון: הפעלת סורק המצלמה האמיתי של ספריית ZXing
+                com.google.zxing.integration.android.IntentIntegrator integrator = new com.google.zxing.integration.android.IntentIntegrator(MainActivity.this);
+                integrator.setDesiredBarcodeFormats(com.google.zxing.integration.android.IntentIntegrator.QR_CODE);
+                integrator.setPrompt("Scan the Room QR Code");
+                integrator.setCameraId(0);
+                integrator.setBeepEnabled(true);
+                integrator.setBarcodeImageEnabled(true);
+                integrator.initiateScan();
             }
         });
         layout.addView(btnScanQR);
@@ -208,9 +214,35 @@ public class MainActivity extends AppCompatActivity {
         roomRef.child("guest").setValue("");
         roomRef.child("status").setValue("waiting");
 
+        // --- יצירת קוד ה-QR בצורה תכנותית ---
+        android.widget.ImageView qrImageView = new android.widget.ImageView(this);
+        try {
+            com.google.zxing.qrcode.QRCodeWriter writer = new com.google.zxing.qrcode.QRCodeWriter();
+            com.google.zxing.common.BitMatrix bitMatrix = writer.encode(roomCode, com.google.zxing.BarcodeFormat.QR_CODE, 500, 500);
+            com.journeyapps.barcodescanner.BarcodeEncoder barcodeEncoder = new com.journeyapps.barcodescanner.BarcodeEncoder();
+            android.graphics.Bitmap bitmap = barcodeEncoder.createBitmap(bitMatrix);
+            qrImageView.setImageBitmap(bitmap);
+            qrImageView.setPadding(0, 40, 0, 0);
+        } catch (com.google.zxing.WriterException e) {
+            e.printStackTrace();
+        }
+
+        LinearLayout layout = new LinearLayout(this);
+        layout.setOrientation(LinearLayout.VERTICAL);
+        layout.setGravity(android.view.Gravity.CENTER);
+
+        TextView txtMessage = new TextView(this);
+        txtMessage.setText("Give this code to your friend:\n\n👉 " + roomCode + " 👈\n\nOr let them scan this QR Code:");
+        txtMessage.setTextSize(16);
+        txtMessage.setGravity(android.view.Gravity.CENTER);
+        txtMessage.setPadding(30, 30, 30, 10);
+
+        layout.addView(txtMessage);
+        layout.addView(qrImageView);
+
         AlertDialog.Builder codeDialog = new AlertDialog.Builder(this);
         codeDialog.setTitle("Room Created Successfully! 🎉");
-        codeDialog.setMessage("Give this code to your friend:\n\n👉 " + roomCode + " 👈\n\nClick 'Start' when they are ready to connect.");
+        codeDialog.setView(layout);
 
         codeDialog.setPositiveButton("Start Game", new DialogInterface.OnClickListener() {
             @Override
@@ -268,12 +300,11 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
-    // --- אופציה 3: רשימת חברים (מתוקנת ללא כפל משתנים) ---
+    // --- אופציה 3: רשימת חברים ---
     private void loadAndShowFriendsDialog() {
         FirebaseUser user = mAuth.getCurrentUser();
         if (user == null) return;
 
-        // הגדרת נתיב רפרנס יחיד ומדויק לתוך רשימת החברים
         DatabaseReference friendsRef = mDatabase.child("users").child(user.getUid()).child("friends");
 
         friendsRef.addListenerForSingleValueEvent(new ValueEventListener() {
@@ -297,9 +328,8 @@ public class MainActivity extends AppCompatActivity {
                     builder.setItems(friendsArray, new DialogInterface.OnClickListener() {
                         @Override
                         public void onClick(DialogInterface dialog, int which) {
-                            String selectedFriend = friendsArray[which];
-                            Toast.makeText(MainActivity.this, "Inviting " + selectedFriend + "...", Toast.LENGTH_SHORT).show();
-                            createNewRoom();
+                            String selectedFriendName = friendsArray[which];
+                            MainActivity.this.sendInviteToFriend(selectedFriendName);
                         }
                     });
                 }
@@ -319,6 +349,83 @@ public class MainActivity extends AppCompatActivity {
             public void onCancelled(@NonNull DatabaseError error) {
                 Toast.makeText(MainActivity.this, "Failed to load friends", Toast.LENGTH_SHORT).show();
             }
+        });
+    }
+
+    private void sendInviteToFriend(String friendName) {
+        String roomCode = String.valueOf(new Random().nextInt(90000) + 10000);
+        // תיקון: יצירה תחת "games" כדי להתאים בצורה מושלמת ל-waitForOpponent ול-listenForIncomingInvites
+        DatabaseReference roomRef = mDatabase.child("games").child(roomCode);
+
+        roomRef.child("host").setValue(getPlayerName());
+        roomRef.child("guest").setValue("");
+        roomRef.child("status").setValue("waiting");
+
+        DatabaseReference inviteRef = mDatabase.child("invitations").child(friendName);
+
+        java.util.HashMap<String, Object> inviteData = new java.util.HashMap<>();
+        inviteData.put("from", getPlayerName());
+        inviteData.put("roomCode", roomCode);
+
+        inviteRef.setValue(inviteData);
+
+        Toast.makeText(this, "Invitation sent to " + friendName + "! Waiting for them to join...", Toast.LENGTH_LONG).show();
+
+        waitForOpponent(roomCode);
+    }
+
+    private void listenForIncomingInvites() {
+        String myName = getPlayerName();
+        if ("Guest".equals(myName)) return;
+
+        DatabaseReference myInviteRef = mDatabase.child("invitations").child(myName);
+
+        myInviteRef.addValueEventListener(new ValueEventListener() {
+            @Override
+            public void onDataChange(@NonNull DataSnapshot snapshot) {
+                if (snapshot.exists()) {
+                    String fromPlayer = snapshot.child("from").getValue(String.class);
+                    String roomCode = snapshot.child("roomCode").getValue(String.class);
+
+                    myInviteRef.removeValue();
+
+                    AlertDialog.Builder builder = new AlertDialog.Builder(MainActivity.this);
+                    builder.setTitle("Game Invitation! 🎮");
+                    builder.setMessage("Your friend " + fromPlayer + " invited you to a game. Would you like to join?");
+                    builder.setCancelable(false);
+
+                    builder.setPositiveButton("Yes, Let's Play! ✅", new DialogInterface.OnClickListener() {
+                        @Override
+                        public void onClick(DialogInterface dialog, int which) {
+                            // תיקון: גישה לצומת "games" כדי להתאים למארח שפתח את החדר
+                            mDatabase.child("games").child(roomCode).child("guest").setValue(getPlayerName());
+                            mDatabase.child("games").child(roomCode).child("status").setValue("playing");
+
+                            Intent i = new Intent(MainActivity.this, GameActivity.class);
+                            i.putExtra("isOnline", true);
+                            i.putExtra("roomCode", roomCode);
+                            i.putExtra("role", "guest");
+                            i.putExtra("size", 10);
+                            i.putExtra("currentUser", getPlayerName());
+                            startActivity(i);
+                        }
+                    });
+
+                    builder.setNegativeButton("No, Thanks ❌", new DialogInterface.OnClickListener() {
+                        @Override
+                        public void onClick(DialogInterface dialog, int which) {
+                            // תיקון: עדכון הסטטוס בתוך "games"
+                            mDatabase.child("games").child(roomCode).child("status").setValue("rejected");
+                            dialog.dismiss();
+                        }
+                    });
+
+                    builder.show();
+                }
+            }
+
+            @Override
+            public void onCancelled(@NonNull DatabaseError error) {}
         });
     }
 
@@ -387,11 +494,47 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onResume() {
         super.onResume();
+
+        // 1. עדכון טקסט ורכיבים קיימים
         tvWelcome.setText("Welcome, " + getPlayerName() + "!");
         SharedPreferences sp = getSharedPreferences("SavedGame", MODE_PRIVATE);
         boolean hasSaved = sp.getBoolean("hasSaved", false);
         btnContinue.setVisibility(hasSaved ? View.VISIBLE : View.GONE);
         invalidateOptionsMenu();
+
+        // 2. הפעלת המאזין להזמנות חברים בזמן אמת
+        listenForIncomingInvites();
+
+        // 3. טעינת הגדרות מה-SharedPreferences
+        SharedPreferences settingsSp = getSharedPreferences("AppSettings", MODE_PRIVATE);
+        String theme = settingsSp.getString("theme", "Light");
+        String bgUriString = settingsSp.getString("bgUri", null);
+
+        // מציאת ה-Layout הראשי של המסך כדי שנוכל לשנות לו צבע או רקע
+        // (תוודא שבקובץ ה-XML של ה-activity_main יש ל-Layout הראשי android:id="@+id/main_layout")
+        View myRootLayout = findViewById(R.id.main_layout);
+
+        if (myRootLayout != null) {
+            // טיפול במצב כהה / בהיר
+            if ("Dark".equals(theme)) {
+                myRootLayout.setBackgroundColor(android.graphics.Color.parseColor("#212121")); // צבע אפור כהה מאוד
+            } else {
+                myRootLayout.setBackgroundColor(android.graphics.Color.parseColor("#FFFFFF")); // צבע לבן רגיל
+            }
+
+            // טיפול בתמונת רקע מותאמת אישית מהגלריה (אם נבחרה)
+            if (bgUriString != null) {
+                try {
+                    android.net.Uri bgUri = android.net.Uri.parse(bgUriString);
+                    java.io.InputStream inputStream = getContentResolver().openInputStream(bgUri);
+                    android.graphics.drawable.Drawable drawable = android.graphics.drawable.Drawable.createFromStream(inputStream, bgUri.toString());
+                    myRootLayout.setBackground(drawable);
+                } catch (Exception e) {
+                    e.printStackTrace();
+                    Toast.makeText(this, "Failed to load custom background", Toast.LENGTH_SHORT).show();
+                }
+            }
+        }
     }
 
     @Override
@@ -434,7 +577,8 @@ public class MainActivity extends AppCompatActivity {
             return true;
         }
         else if (id == R.id.menu_settings) {
-            Toast.makeText(this, "Settings clicked", Toast.LENGTH_SHORT).show();
+            Intent intent = new Intent(MainActivity.this, SettingsActivity.class);
+            startActivity(intent);
             return true;
         }
         else if (id == R.id.action_music) {
@@ -466,6 +610,24 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    // קליטת התוצאה מסורק הברקוד ומעבר ישיר לחדר
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        com.google.zxing.integration.android.IntentResult result = com.google.zxing.integration.android.IntentIntegrator.parseActivityResult(requestCode, resultCode, data);
+        if (result != null) {
+            if (result.getContents() == null) {
+                Toast.makeText(this, "Scanning cancelled", Toast.LENGTH_LONG).show();
+            } else {
+                String scannedRoomCode = result.getContents().trim();
+                Toast.makeText(this, "Scanned Code: " + scannedRoomCode, Toast.LENGTH_SHORT).show();
+                checkAndJoinRoom(scannedRoomCode);
+            }
+        } else {
+            super.onActivityResult(requestCode, resultCode, data);
+        }
+    }
+
+    // --- מנגנון ה-Matchmaking המתוקן והמדויק ---
     private void checkMatchmaking() {
         com.google.firebase.auth.FirebaseUser currentUser = com.google.firebase.auth.FirebaseAuth.getInstance().getCurrentUser();
         if (currentUser == null) return;
@@ -480,31 +642,34 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onDataChange(com.google.firebase.database.DataSnapshot snapshot) {
                 if (!snapshot.exists()) {
-                    String newGameId = gamesRef.push().getKey();
+                    String newRoomCode = gamesRef.push().getKey();
 
                     java.util.HashMap<String, Object> waitingData = new java.util.HashMap<>();
                     waitingData.put("playerId", currentUserId);
                     waitingData.put("playerName", currentUserName);
-                    waitingData.put("gameId", newGameId);
+                    waitingData.put("gameId", newRoomCode);
 
                     matchRef.setValue(waitingData);
 
                     android.widget.Toast.makeText(MainActivity.this, "מחפש שחקן נוסף...", android.widget.Toast.LENGTH_SHORT).show();
-                    waitForOpponent(newGameId);
+                    waitForOpponent(newRoomCode);
 
                 } else {
-                    String existingGameId = snapshot.child("gameId").getValue(String.class);
+                    String existingRoomCode = snapshot.child("gameId").getValue(String.class);
                     String player1Id = snapshot.child("playerId").getValue(String.class);
 
                     matchRef.removeValue();
 
-                    gamesRef.child(existingGameId).child("player2").setValue(currentUserId);
-                    gamesRef.child(existingGameId).child("status").setValue("playing");
-                    gamesRef.child(existingGameId).child("turn").setValue(player1Id);
+                    gamesRef.child(existingRoomCode).child("guest").setValue(currentUserName);
+                    gamesRef.child(existingRoomCode).child("status").setValue("playing");
+                    gamesRef.child(existingRoomCode).child("turn").setValue(player1Id);
 
                     Intent intent = new Intent(MainActivity.this, GameActivity.class);
-                    intent.putExtra("gameId", existingGameId);
-                    intent.putExtra("isPlayer1", false);
+                    intent.putExtra("isOnline", true);
+                    intent.putExtra("roomCode", existingRoomCode);
+                    intent.putExtra("role", "guest");
+                    intent.putExtra("size", 10);
+                    intent.putExtra("currentUser", getPlayerName());
                     startActivity(intent);
                 }
             }
@@ -514,17 +679,21 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
-    private void waitForOpponent(String gameId) {
-        com.google.firebase.database.DatabaseReference gameRef = com.google.firebase.database.FirebaseDatabase.getInstance().getReference("games").child(gameId);
-        gameRef.child("player2").addValueEventListener(new com.google.firebase.database.ValueEventListener() {
+    private void waitForOpponent(String roomCode) {
+        com.google.firebase.database.DatabaseReference gameRef = com.google.firebase.database.FirebaseDatabase.getInstance().getReference("games").child(roomCode);
+        gameRef.child("status").addValueEventListener(new com.google.firebase.database.ValueEventListener() {
             @Override
             public void onDataChange(com.google.firebase.database.DataSnapshot snapshot) {
-                if (snapshot.exists()) {
-                    gameRef.child("player2").removeEventListener(this);
+                String status = snapshot.getValue(String.class);
+                if ("playing".equals(status)) {
+                    gameRef.child("status").removeEventListener(this);
 
                     Intent intent = new Intent(MainActivity.this, GameActivity.class);
-                    intent.putExtra("gameId", gameId);
-                    intent.putExtra("isPlayer1", true);
+                    intent.putExtra("isOnline", true);
+                    intent.putExtra("roomCode", roomCode);
+                    intent.putExtra("role", "host");
+                    intent.putExtra("size", 10);
+                    intent.putExtra("currentUser", getPlayerName());
                     startActivity(intent);
                 }
             }

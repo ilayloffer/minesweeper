@@ -1,7 +1,7 @@
 package com.example.minesweeper;
 
-import android.annotation.SuppressLint;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -17,12 +17,9 @@ import androidx.activity.result.ActivityResult;
 import androidx.activity.result.ActivityResultCallback;
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
-import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
 
 public class SettingsActivity extends AppCompatActivity {
-
-    private static final int REQ_PICK_IMAGE = 1001; // מזהה לבחירת תמונה
 
     private Switch darkModeSwitch;
     private Button pickImageBtn, applyBtn;
@@ -30,40 +27,44 @@ public class SettingsActivity extends AppCompatActivity {
     private String chosenTheme = "Light";
     private String chosenBgUri = null;
 
+    private SharedPreferences sp;
+
     private final ActivityResultLauncher<Intent> pickImageLauncher =
             registerForActivityResult(
                     new ActivityResultContracts.StartActivityForResult(),
                     new ActivityResultCallback<ActivityResult>() {
                         @Override
                         public void onActivityResult(ActivityResult result) {
-                            if (result.getResultCode() == RESULT_OK
-                                    && result.getData() != null) {
+                            if (result.getResultCode() == RESULT_OK && result.getData() != null) {
 
                                 Intent data = result.getData();
                                 Uri uri = data.getData();
 
                                 if (uri != null) {
-                                    try {
-                                        int takeFlags = data.getFlags()
-                                                & (Intent.FLAG_GRANT_READ_URI_PERMISSION
-                                                | Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-                                                | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
+                                    // שמירת ה-URI של התמונה שנבחרה
+                                    chosenBgUri = uri.toString();
+                                    Toast.makeText(SettingsActivity.this, "Background selected", Toast.LENGTH_SHORT).show();
 
-                                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
+                                    try {
+                                        //  בניית הדגלים בצורה מפורשת
+                                        int intentFlags = data.getFlags();
+                                        int takeFlags = 0;
+
+                                        if ((intentFlags & Intent.FLAG_GRANT_READ_URI_PERMISSION) != 0) {
+                                            takeFlags |= Intent.FLAG_GRANT_READ_URI_PERMISSION;
+                                        }
+                                        if ((intentFlags & Intent.FLAG_GRANT_WRITE_URI_PERMISSION) != 0) {
+                                            takeFlags |= Intent.FLAG_GRANT_WRITE_URI_PERMISSION;
+                                        }
+
+                                        // ביצוע הרישום הקבוע רק אם יש הרשאות רלוונטיות
+                                        if (takeFlags != 0 && Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
                                             SettingsActivity.this.getContentResolver()
-                                                    .takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                                                    .takePersistableUriPermission(uri, takeFlags);
                                         }
                                     } catch (Exception e) {
-                                        Log.w("SettingsActivity",
-                                                "takePersistableUriPermission failed: " + e);
+                                        Log.w("SettingsActivity", "takePersistableUriPermission failed: " + e);
                                     }
-
-                                    chosenBgUri = uri.toString();
-                                    Toast.makeText(
-                                            SettingsActivity.this,
-                                            "Background selected",
-                                            Toast.LENGTH_SHORT
-                                    ).show();
                                 }
                             }
                         }
@@ -73,6 +74,8 @@ public class SettingsActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_settings);
+
+        sp = getSharedPreferences("AppSettings", MODE_PRIVATE);
 
         ImageButton backBtn = findViewById(R.id.backBtn);
         backBtn.setOnClickListener(new View.OnClickListener() {
@@ -86,7 +89,14 @@ public class SettingsActivity extends AppCompatActivity {
         pickImageBtn = findViewById(R.id.pickImageBtn);
         applyBtn = findViewById(R.id.applyBtn);
 
-        // מצב כהה/בהיר
+        // --- טעינת מצב קיים מה-SharedPreferences ---
+        chosenTheme = sp.getString("theme", "Light");
+        chosenBgUri = sp.getString("bgUri", null);
+
+        // מעדכנים את הסוויץ' לפי מה ששמור בזיכרון
+        darkModeSwitch.setChecked("Dark".equals(chosenTheme));
+
+        // האזנה לשינוי במצב כהה/בהיר
         darkModeSwitch.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
             @Override
             public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
@@ -94,7 +104,7 @@ public class SettingsActivity extends AppCompatActivity {
             }
         });
 
-        // בחירת תמונה מהרשימה
+        // בחירת תמונה מהגלריה
         pickImageBtn.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -108,16 +118,21 @@ public class SettingsActivity extends AppCompatActivity {
             }
         });
 
-        // כפתור החלה
+        // כפתור שמירה והחלה
         applyBtn.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                Intent result = new Intent();
-                result.putExtra("theme", chosenTheme);
+                // שמירת הנתונים בתוך ה-SharedPreferences בצורה קבועה
+                SharedPreferences.Editor editor = sp.edit();
+                editor.putString("theme", chosenTheme);
                 if (chosenBgUri != null) {
-                    result.putExtra("bgUri", chosenBgUri);
+                    editor.putString("bgUri", chosenBgUri);
                 }
-                SettingsActivity.this.setResult(RESULT_OK, result);
+                editor.apply();
+
+                Toast.makeText(SettingsActivity.this, "Settings saved! 🎉", Toast.LENGTH_SHORT).show();
+
+                // סגירת המסך וחזרה למסך הקודם
                 SettingsActivity.this.finish();
             }
         });

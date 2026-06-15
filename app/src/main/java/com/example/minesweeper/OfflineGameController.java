@@ -2,12 +2,6 @@ package com.example.minesweeper;
 
 import android.os.Handler;
 import android.os.Looper;
-import com.google.firebase.database.DataSnapshot;
-import com.google.firebase.database.DatabaseError;
-import com.google.firebase.database.DatabaseReference;
-import com.google.firebase.database.FirebaseDatabase;
-import com.google.firebase.database.ValueEventListener;
-import androidx.annotation.NonNull;
 import java.util.Random;
 
 public class OfflineGameController implements GameController {
@@ -42,7 +36,6 @@ public class OfflineGameController implements GameController {
             }
         }
 
-        // סינכרון כמות המוקשים שהוגרלו מול ה-Activity
         if (view instanceof GameActivity) {
             ((GameActivity) view).setDynamicBombsCount(totalMines);
         }
@@ -114,38 +107,8 @@ public class OfflineGameController implements GameController {
 
         if (revealedCount == (size * size) - totalMines) {
             isGameOver = true;
+            // הפעלת פונקציית סיום המשחק המשופרת והריכוזית ב-GameActivity
             view.showGameOver(true);
-
-            // עדכון הלידרבורד של האופליין (wins)
-            if (currentUser != null && !currentUser.isEmpty() && !currentUser.equals("Guest")) {
-                // 1. הרפרנס מצביע על השחקן הספציפי בטבלה
-                DatabaseReference userRef = FirebaseDatabase.getInstance().getReference("leaderboard").child(currentUser);
-
-                // 2. מאזינים לכל האובייקט של המשתמש באופן חד פעמי
-                userRef.addListenerForSingleValueEvent(new ValueEventListener() {
-                    @Override
-                    public void onDataChange(@NonNull DataSnapshot snapshot) {
-                        long currentWins = 0;
-
-                        // 3. שליפה בטוחה של הניצחונות הקיימים
-                        if (snapshot.hasChild("wins")) {
-                            Long winsVal = snapshot.child("wins").getValue(Long.class);
-                            if (winsVal != null) {
-                                currentWins = winsVal;
-                            }
-                        }
-
-                        // 4. עדכון נקי של שני השדות תחת השחקן במקביל
-                        userRef.child("wins").setValue(currentWins + 1);
-                        userRef.child("username").setValue(currentUser);
-                    }
-
-                    @Override
-                    public void onCancelled(@NonNull DatabaseError error) {
-                        // תמיד כדאי לשים פה לוג או Toast כדי לדעת אם ה-Rules של Firebase חוסמים אותך
-                    }
-                });
-            }
         }
     }
 

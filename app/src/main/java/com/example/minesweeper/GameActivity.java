@@ -45,7 +45,7 @@ public class GameActivity extends AppCompatActivity implements GameView {
     private Button[][] buttons;
 
     // --- ניהול מונה דינמי אמין ---
-    private int bombsCount = 10; // ברירת מחדל התחלתית (יוצג 90 משבצות פנויות)
+    private int bombsCount = 10;
     private int size;
     private boolean isOnline;
     private boolean gameStarted = false;
@@ -70,12 +70,10 @@ public class GameActivity extends AppCompatActivity implements GameView {
         bindViews();
         readIntent();
 
-        // בדיקה האם הגענו לפה דרך מנגנון ה-Matchmaking החדש
         Intent intent = getIntent();
         String matchmakingGameId = intent.getStringExtra("gameId");
 
         if (matchmakingGameId != null) {
-            // תרחיש אונליין דרך ה-Matchmaking החדש
             isOnline = true;
             roomId = matchmakingGameId;
             boolean isPlayer1 = intent.getBooleanExtra("isPlayer1", true);
@@ -91,13 +89,11 @@ public class GameActivity extends AppCompatActivity implements GameView {
             setupDisconnectHook();
             setupChat();
 
-            // אתחול הקונטרולר הקיים בפרויקט שלך עם הפרמטרים הנכונים
             statusText.setText("Game started! Playing online...");
             controller = new OnlineGameController(this, size, roomId, currentUser, isPlayer1 ? "Player 2" : "Player 1");
             createBoardUI();
 
         } else {
-            // התנהגות רגילה (הקוד המקורי שלך עבור אופליין או אונליין דרך קוד חדר)
             if (isOnline) {
                 initOnlineGame();
             } else {
@@ -112,7 +108,6 @@ public class GameActivity extends AppCompatActivity implements GameView {
             }
         });
     }
-
 
     @Override
     protected void onDestroy() {
@@ -305,7 +300,6 @@ public class GameActivity extends AppCompatActivity implements GameView {
             }
             boardContainer.addView(row);
         }
-
         updateRemainingUI();
     }
 
@@ -339,7 +333,6 @@ public class GameActivity extends AppCompatActivity implements GameView {
                 } else {
                     btn.setText(cell.isFlagged() ? "🚩" : "");
                 }
-
                 GameActivity.this.updateRemainingUI();
             }
         });
@@ -349,7 +342,6 @@ public class GameActivity extends AppCompatActivity implements GameView {
         if (buttons == null) return;
 
         int closedButtonsCount = 0;
-
         for (int i = 0; i < size; i++) {
             for (int j = 0; j < size; j++) {
                 if (buttons[i][j] != null && buttons[i][j].isEnabled()) {
@@ -359,15 +351,12 @@ public class GameActivity extends AppCompatActivity implements GameView {
         }
 
         int safeCellsLeft = closedButtonsCount - bombsCount;
-
         if (safeCellsLeft < 0) {
             safeCellsLeft = 0;
         }
-
         tvCellsRemaining.setText("תאים ללא פצצות: " + safeCellsLeft);
     }
 
-    // פונקציה המאפשרת לבקרים לעדכן את ה-Activity בכמות המוקשים האמיתית שהוגרלה
     public void setDynamicBombsCount(int actualBombs) {
         runOnUiThread(new Runnable() {
             @Override
@@ -398,6 +387,77 @@ public class GameActivity extends AppCompatActivity implements GameView {
 
                 if (didIWin) {
                     tvCellsRemaining.setText("תאים ללא פצצות: 0");
+
+                    // --- תרחיש 1: ניצחון באופליין ---
+                    if (!isOnline) {
+                        SharedPreferences scoreSp = getSharedPreferences("OfflineScores", MODE_PRIVATE);
+
+                        int currentWins = scoreSp.getInt("offline_wins", 0);
+                        scoreSp.edit().putInt("offline_wins", currentWins + 1).apply();
+
+                        if (controller instanceof OfflineGameController) {
+                            OfflineGameController offlineController = (OfflineGameController) controller;
+                            int finalTime = offlineController.getSecondsElapsed();
+
+                            int currentHighScore = scoreSp.getInt("high_score", Integer.MAX_VALUE);
+
+                            if (finalTime < currentHighScore && finalTime > 0) {
+                                scoreSp.edit().putInt("high_score", finalTime).apply();
+                                Toast.makeText(GameActivity.this, "New Offline Best Time: " + finalTime + "s! ⏱️", Toast.LENGTH_SHORT).show();
+                            }
+                        }
+
+                        if (currentUser != null && !"Guest".equals(currentUser)) {
+                            DatabaseReference leaderboardRef = FirebaseDatabase.getInstance().getReference("leaderboard").child(currentUser);
+
+                            leaderboardRef.addListenerForSingleValueEvent(new ValueEventListener() {
+                                @Override
+                                public void onDataChange(@NonNull DataSnapshot snapshot) {
+                                    long cloudScore = snapshot.hasChild("bestOfflineTime") ? snapshot.child("bestOfflineTime").getValue(Long.class) : Integer.MAX_VALUE;
+                                    long currentCloudWins = snapshot.hasChild("offlineWins") ? snapshot.child("offlineWins").getValue(Long.class) : 0;
+
+                                    java.util.HashMap<String, Object> updates = new java.util.HashMap<>();
+                                    updates.put("username", currentUser);
+                                    updates.put("offlineWins", currentCloudWins + 1);
+
+                                    if (controller instanceof OfflineGameController) {
+                                        int finalTime = ((OfflineGameController) controller).getSecondsElapsed();
+                                        if (finalTime < cloudScore && finalTime > 0) {
+                                            updates.put("bestOfflineTime", finalTime);
+                                        }
+                                    }
+
+                                    leaderboardRef.updateChildren(updates);
+                                }
+
+                                @Override
+                                public void onCancelled(@NonNull DatabaseError error) {}
+                            });
+                        }
+                    }
+                    // --- תרחיש 2: ניצחון באונליין ---
+                    else {
+                        if (currentUser != null && !"Guest".equals(currentUser)) {
+                            DatabaseReference leaderboardRef = FirebaseDatabase.getInstance().getReference("leaderboard").child(currentUser);
+
+                            leaderboardRef.addListenerForSingleValueEvent(new ValueEventListener() {
+                                @Override
+                                public void onDataChange(@NonNull DataSnapshot snapshot) {
+                                    long currentOnlineWins = snapshot.hasChild("onlineWins") ? snapshot.child("onlineWins").getValue(Long.class) : 0;
+
+                                    java.util.HashMap<String, Object> updates = new java.util.HashMap<>();
+                                    updates.put("username", currentUser);
+                                    updates.put("onlineWins", currentOnlineWins + 1);
+
+                                    // שימוש ב-updateChildren מונע פגיעה בשדות אופליין קיימים
+                                    leaderboardRef.updateChildren(updates);
+                                }
+
+                                @Override
+                                public void onCancelled(@NonNull DatabaseError error) {}
+                            });
+                        }
+                    }
                 }
 
                 overlay.setVisibility(View.VISIBLE);
