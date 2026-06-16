@@ -1,7 +1,6 @@
 package com.example.minesweeper;
 
 import android.os.CountDownTimer;
-
 import com.google.android.gms.tasks.OnSuccessListener;
 import com.google.firebase.database.*;
 import java.util.HashMap;
@@ -12,6 +11,7 @@ public class OnlineGameController implements GameController {
     private final GameView view;
     private final int size;
     private DatabaseReference gameRef;
+    private DatabaseReference roomRef; // רפרנס לחדר כדי לבדוק מי ה-Host
 
     private ValueEventListener stateListener;
     private ValueEventListener boardListener;
@@ -36,24 +36,40 @@ public class OnlineGameController implements GameController {
         this.gameId = gameId;
         this.currentUser = currentUser;
         this.otherPlayer = otherPlayer;
-        this.gameRef = FirebaseDatabase.getInstance()
-                .getReference("games")
-                .child(gameId);
+
+        this.gameRef = FirebaseDatabase.getInstance().getReference("games").child(gameId);
+        this.roomRef = FirebaseDatabase.getInstance().getReference("rooms").child(gameId);
+
         this.localBoard = new Cell[size][size];
 
         listenToFirebase();
     }
 
     private void listenToFirebase() {
-        gameRef.get().addOnSuccessListener(new OnSuccessListener<DataSnapshot>() {
+        // בודקים מי ה-Host הרשמי מתוך ה-room ב-Firebase
+        roomRef.addListenerForSingleValueEvent(new ValueEventListener() {
             @Override
-            public void onSuccess(DataSnapshot snapshot) {
-                if (!snapshot.exists()) {
-                    OnlineGameController.this.createNewGame();
+            public void onDataChange(DataSnapshot roomSnapshot) {
+                String hostName = roomSnapshot.child("host").getValue(String.class);
+
+                // רק אם המשתמש הנוכחי הוא ה-Host הרשמי, יש לו הרשאה לייצר את הלוח
+                if (currentUser.equals(hostName)) {
+                    gameRef.get().addOnSuccessListener(new OnSuccessListener<DataSnapshot>() {
+                        @Override
+                        public void onSuccess(DataSnapshot snapshot) {
+                            if (!snapshot.exists()) {
+                                OnlineGameController.this.createNewGame();
+                            }
+                        }
+                    });
                 }
             }
+
+            @Override
+            public void onCancelled(DatabaseError error) {}
         });
 
+        // האזנה לשינויי סטטוס ותורות
         stateListener = gameRef.addValueEventListener(new ValueEventListener() {
             @Override
             public void onDataChange(DataSnapshot snapshot) {
@@ -88,6 +104,7 @@ public class OnlineGameController implements GameController {
             }
         });
 
+        // האזנה לעדכוני הלוח בשרת
         boardListener = gameRef.child("board").addValueEventListener(new ValueEventListener() {
             @Override
             public void onDataChange(DataSnapshot boardSnap) {
@@ -125,7 +142,6 @@ public class OnlineGameController implements GameController {
                     }
                 }
 
-                // עדכון המונה ב-Activity לפי כמות המוקשים שהשרת יצר בפועל בחדר
                 if (view instanceof GameActivity) {
                     ((GameActivity) view).setDynamicBombsCount(minesInOnlineBoard);
                 }
@@ -161,6 +177,7 @@ public class OnlineGameController implements GameController {
         }
 
         Map<String, Object> game = new HashMap<>();
+        // ה-Host תמיד קובע שהתור הראשון שייך לו, ובכך נמנעת התנגשות
         game.put("playerTurn", currentUser);
         game.put("board", boardMap);
         game.put("status", "ACTIVE");
@@ -219,16 +236,19 @@ public class OnlineGameController implements GameController {
         view.showGameOver(didIWin);
         view.updateStatus(didIWin ? "You Won! 🎉" : "You Lost! 💥");
 
-        // עדכון הלידרבורד של האונליין (onlineWins)
         if (didIWin && currentUser != null && !currentUser.equals("Guest")) {
             DatabaseReference userRef = FirebaseDatabase.getInstance().getReference("leaderboard").child(currentUser);
-            userRef.child("onlineWins").addListenerForSingleValueEvent(new ValueEventListener() {
+            userRef.addListenerForSingleValueEvent(new ValueEventListener() {
                 @Override
                 public void onDataChange(DataSnapshot snapshot) {
-                    Long currentWins = snapshot.getValue(Long.class);
+                    Long currentWins = snapshot.child("onlineWins").getValue(Long.class);
                     if (currentWins == null) currentWins = 0L;
-                    userRef.child("onlineWins").setValue(currentWins + 1);
-                    userRef.child("username").setValue(currentUser);
+
+                    Map<String, Object> updates = new HashMap<>();
+                    updates.put("onlineWins", currentWins + 1);
+                    updates.put("username", currentUser);
+
+                    userRef.updateChildren(updates);
                 }
                 @Override
                 public void onCancelled(DatabaseError error) {}

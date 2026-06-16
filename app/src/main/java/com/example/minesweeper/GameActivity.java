@@ -44,7 +44,6 @@ public class GameActivity extends AppCompatActivity implements GameView {
     private GameController controller;
     private Button[][] buttons;
 
-    // --- ניהול מונה דינמי אמין ---
     private int bombsCount = 10;
     private int size;
     private boolean isOnline;
@@ -70,35 +69,11 @@ public class GameActivity extends AppCompatActivity implements GameView {
         bindViews();
         readIntent();
 
-        Intent intent = getIntent();
-        String matchmakingGameId = intent.getStringExtra("gameId");
-
-        if (matchmakingGameId != null) {
-            isOnline = true;
-            roomId = matchmakingGameId;
-            boolean isPlayer1 = intent.getBooleanExtra("isPlayer1", true);
-
-            btnExitSave.setVisibility(View.GONE);
-            if (chatContainer != null) {
-                chatContainer.setVisibility(View.VISIBLE);
-            }
-
-            roomRef = FirebaseDatabase.getInstance().getReference("rooms").child(roomId);
-            chatRef = FirebaseDatabase.getInstance().getReference("games").child(roomId).child("chat");
-
-            setupDisconnectHook();
-            setupChat();
-
-            statusText.setText("Game started! Playing online...");
-            controller = new OnlineGameController(this, size, roomId, currentUser, isPlayer1 ? "Player 2" : "Player 1");
-            createBoardUI();
-
+        // איחוד מסלולים: אם המשחק מסומן כאונליין (בין אם דרך קוד/חבר או Matchmaking), מפעילים נתיב אונליין אחיד
+        if (isOnline) {
+            initOnlineGame();
         } else {
-            if (isOnline) {
-                initOnlineGame();
-            } else {
-                initOfflineGame();
-            }
+            initOfflineGame();
         }
 
         btnHome.setOnClickListener(new View.OnClickListener() {
@@ -142,8 +117,13 @@ public class GameActivity extends AppCompatActivity implements GameView {
         Intent intent = getIntent();
         size        = intent.getIntExtra("size", 10);
         isOnline    = intent.getBooleanExtra("isOnline", false);
-        roomId      = intent.getStringExtra("roomCode");
         currentUser = intent.getStringExtra("currentUser");
+
+        // קליטה גמישה של מזהה החדר (תומך גם ב-roomCode וגם ב-gameId)
+        roomId      = intent.getStringExtra("roomCode");
+        if (roomId == null || roomId.isEmpty()) {
+            roomId = intent.getStringExtra("gameId");
+        }
 
         if (size == 10) {
             bombsCount = 10;
@@ -186,8 +166,9 @@ public class GameActivity extends AppCompatActivity implements GameView {
             return;
         }
 
+        // עבודה מול נתיבים אחידים ומסונכרנים
         roomRef = FirebaseDatabase.getInstance().getReference("rooms").child(roomId);
-        chatRef = FirebaseDatabase.getInstance().getReference("games").child(roomId).child("chat");
+        chatRef = FirebaseDatabase.getInstance().getReference("rooms").child(roomId).child("chat");
 
         setupDisconnectHook();
         listenForRoomChanges();
@@ -222,16 +203,14 @@ public class GameActivity extends AppCompatActivity implements GameView {
     }
 
     private void setupDisconnectHook() {
-        roomRef.child("players").addListenerForSingleValueEvent(new ValueEventListener() {
+        roomRef.addListenerForSingleValueEvent(new ValueEventListener() {
             @Override
             public void onDataChange(@NonNull DataSnapshot snapshot) {
-                String p1 = snapshot.child("player1").getValue(String.class);
-                String p2 = snapshot.child("player2").getValue(String.class);
+                String host = snapshot.child("host").getValue(String.class);
+                String guest = snapshot.child("guest").getValue(String.class);
                 if (currentUser == null) return;
 
-                String myKey = currentUser.equals(p1) ? "player1" : (currentUser.equals(p2) ? "player2" : null);
-                if (myKey != null) {
-                    roomRef.child("players").child(myKey).onDisconnect().removeValue();
+                if (currentUser.equals(host) || currentUser.equals(guest)) {
                     roomRef.child("status").onDisconnect().setValue("waiting");
                 }
             }
@@ -243,18 +222,25 @@ public class GameActivity extends AppCompatActivity implements GameView {
         roomListener = new ValueEventListener() {
             private void run() {
                 statusText.setText("Game started vs " + otherPlayer);
+                // שליחת הפרמטרים המדויקים עם שמות המשתמשים האמיתיים מה-Firebase
                 controller = new OnlineGameController(GameActivity.this, size, roomId, currentUser, otherPlayer);
                 createBoardUI();
             }
 
             @Override
             public void onDataChange(@NonNull DataSnapshot snapshot) {
+                if (!snapshot.exists()) return;
+
                 String host = snapshot.child("host").getValue(String.class);
                 String guest = snapshot.child("guest").getValue(String.class);
 
+                // המתנה עד ששני השחקנים רשומים בתוך החדר בשרת
                 if (host == null || guest == null || guest.isEmpty()) {
-                    if (gameStarted) { finish(); }
-                    else { statusText.setText("Waiting for opponent..."); }
+                    if (gameStarted) {
+                        finish();
+                    } else {
+                        statusText.setText("Waiting for opponent...");
+                    }
                     return;
                 }
 
@@ -318,6 +304,7 @@ public class GameActivity extends AppCompatActivity implements GameView {
         runOnUiThread(new Runnable() {
             @Override
             public void run() {
+                if (buttons == null || r >= size || c >= size || buttons[r][c] == null) return;
                 Button btn = buttons[r][c];
 
                 if (cell.isRevealed()) {
@@ -373,6 +360,17 @@ public class GameActivity extends AppCompatActivity implements GameView {
             @Override
             public void run() {
                 boardContainer.setAlpha(enabled ? 1.0f : 0.5f);
+                // נעילת/פתיחת לחיצות על הכפתורים בהתאם לתור
+                if (buttons != null) {
+                    for (int i = 0; i < size; i++) {
+                        for (int j = 0; j < size; j++) {
+                            if (buttons[i][j] != null) {
+                                buttons[i][j].setClickable(enabled);
+                                buttons[i][j].setLongClickable(enabled);
+                            }
+                        }
+                    }
+                }
             }
         });
     }
@@ -388,7 +386,6 @@ public class GameActivity extends AppCompatActivity implements GameView {
                 if (didIWin) {
                     tvCellsRemaining.setText("תאים ללא פצצות: 0");
 
-                    // --- תרחיש 1: ניצחון באופליין ---
                     if (!isOnline) {
                         SharedPreferences scoreSp = getSharedPreferences("OfflineScores", MODE_PRIVATE);
 
@@ -435,7 +432,6 @@ public class GameActivity extends AppCompatActivity implements GameView {
                             });
                         }
                     }
-                    // --- תרחיש 2: ניצחון באונליין ---
                     else {
                         if (currentUser != null && !"Guest".equals(currentUser)) {
                             DatabaseReference leaderboardRef = FirebaseDatabase.getInstance().getReference("leaderboard").child(currentUser);
@@ -449,7 +445,6 @@ public class GameActivity extends AppCompatActivity implements GameView {
                                     updates.put("username", currentUser);
                                     updates.put("onlineWins", currentOnlineWins + 1);
 
-                                    // שימוש ב-updateChildren מונע פגיעה בשדות אופליין קיימים
                                     leaderboardRef.updateChildren(updates);
                                 }
 
@@ -478,15 +473,15 @@ public class GameActivity extends AppCompatActivity implements GameView {
 
     private void removePlayerFromRoom() {
         if (roomRef == null || currentUser == null) return;
-        roomRef.child("players").addListenerForSingleValueEvent(new ValueEventListener() {
+        roomRef.addListenerForSingleValueEvent(new ValueEventListener() {
             @Override
             public void onDataChange(@NonNull DataSnapshot snapshot) {
                 if (!snapshot.exists()) return;
-                String p1 = snapshot.child("player1").getValue(String.class);
-                String p2 = snapshot.child("player2").getValue(String.class);
+                String host = snapshot.child("host").getValue(String.class);
+                String guest = snapshot.child("guest").getValue(String.class);
 
-                if (currentUser.equals(p1)) roomRef.child("players").child("player1").removeValue();
-                else if (currentUser.equals(p2)) roomRef.child("players").child("player2").removeValue();
+                if (currentUser.equals(host)) roomRef.child("host").removeValue();
+                else if (currentUser.equals(guest)) roomRef.child("guest").removeValue();
 
                 roomRef.child("status").setValue("waiting");
             }
